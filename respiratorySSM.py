@@ -45,7 +45,7 @@ def graphToCoords(graph, graphnodes):
     coords.append(graph.nodes[node]["pos"])
   return coords
 
-class AirwaySSM:
+class RespiratorySSM:
 
   def __init__(self, lm, train_size=0.9):
 
@@ -602,7 +602,7 @@ if __name__ == "__main__":
   
   #initialise shape model
   diameter = np.ones(nodalCoords.shape[:-1])
-  ssm = AirwaySSM(nodalCoords, train_size=trainSplit)
+  ssm = RespiratorySSM(nodalCoords, train_size=trainSplit)
   xBar = ssm.computeMean(ssm.x_scale_tr)
   xBar_n3 = xBar.reshape(-1,ssm.shape)
   dBar = xBar_n3[:,-1]

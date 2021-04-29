@@ -58,6 +58,12 @@ lmTrans_all = dict.fromkeys(lobe_list)
 cols = ['green', 'black', 'red', 'pink', 'salmon']
 # plt.close()
 vp = v.Plotter()
+lobeInds = []
+lmCounter = 0
+# output array index for each shape's landmarks
+inds = np.arange(0,landmarks.shape[1])+lmCounter
+lmCounter += inds.size
+np.savetxt(out_dir+'landmarkIndex{}.txt'.format('Airway'), inds, fmt="%i")
 for i, (lobe, c) in enumerate(zip(lobe_list, cols)):
   print('reading {}'.format(lobe))
   # read and sort lobe landmarks
@@ -81,14 +87,15 @@ for i, (lobe, c) in enumerate(zip(lobe_list, cols)):
                                     for t in transDirs_all])
   lobe_lms[lobe] = lobe_lms[lobe] + lmTrans_all[lobe][:,np.newaxis]
   # vp += v.Points(lobe_lms[lobe][0], r=3).c(c)
-
-
+  inds = np.arange(0,lobe_lms[lobe].shape[1])+lmCounter
+  lmCounter += inds.size
+  np.savetxt(out_dir+'landmarkIndex{}.txt'.format(lobe), inds, fmt="%i")
   landmarks = np.hstack((landmarks, lobe_lms[lobe]))
 
-landmarks -= carinaArr[:,np.newaxis]
-for lm, pId in zip(landmarks, patientIDs):
-  out_file = out_dir+'allLandmarks{}.csv'.format(pId)
-  np.savetxt(out_file, lm, header='x, y, z', delimiter=',')
+# landmarks -= carinaArr[:,np.newaxis]
+# for lm, pId in zip(landmarks, patientIDs):
+#   out_file = out_dir+'allLandmarks{}.csv'.format(pId)
+#   np.savetxt(out_file, lm, header='x, y, z', delimiter=',')
 
 #   plt.scatter(lobe_lms[lobe][0,:,0], lobe_lms[lobe][0,:,2], c=c)
 # plt.scatter(airway_lms[0,:,0], airway_lms[0,:,2],c='blue')

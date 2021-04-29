@@ -50,7 +50,7 @@ from ssmPlot import *
 # from userUtils import cm2inch, doPCA, trainTestSplit
 import userUtils as utils
 
-class AirwaySAM:
+class RespiratorySAM:
 
   def __init__(self, lm, imgs, imgsOrigin, imgsSpacing, train_size=0.9):
     
@@ -531,7 +531,7 @@ if __name__ == "__main__":
   #-offset centered coordinates to same reference frame as CT data
   lmProj = nodalCoords + carinaArr[:,np.newaxis]#landmarkTrans[:, np.newaxis]
   #-create appearance model instance and load data
-  sam = AirwaySAM(lmProj, drrArr, origin, spacing, train_size=trainSplit)
+  sam = RespiratorySAM(lmProj, drrArr, origin, spacing, train_size=trainSplit)
   sam.testLandmarkAndImageBounds(sam.lm[:,:,[0,2]], sam.imgCoords)
   drrPos = sam.imgCoords
   # drrArrNorm = sam.imgsN
