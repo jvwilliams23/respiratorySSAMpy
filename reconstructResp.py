@@ -27,6 +27,10 @@ from skimage.color import rgb2gray
 from time import time
 from datetime import date
 
+
+''' TODO - sync SAM and SSM classes to conda folder. Can then oimport like
+from ssm import SSM as RespiratorySSM 
+'''
 # from reconstructSSAM import LobarPSM
 from respiratorySAM import RespiratorySAM
 from respiratorySSM import RespiratorySSM
@@ -42,7 +46,7 @@ plotAlignment = False
 def getInputs():
   parser = argparse.ArgumentParser(description='SSM for lung lobe variation')
   parser.add_argument('--inp', '-i',
-                      default='landmarks/manual-jw-diameterFromSurface/', 
+                      default='allLandmarks/', 
                       type=str, 
                       help='input files (landmarks)'
                       )
@@ -351,20 +355,24 @@ if __name__=='__main__':
   mean_mesh = dict.fromkeys(shapes)
   faces = dict.fromkeys(shapes) # faces of mean surface for each shape
   surfCoords_mmOrig = dict.fromkeys(shapes) # surface nodes for each shape
+  surfCoords_mm = dict.fromkeys(shapes) # surface nodes in same ordering as LMs
+  meanNorms_face = dict.fromkeys(shapes) # normals for each face (?) of mean mesh
   surfToLMorder = dict.fromkeys(shapes) # mapping between surface nodes and LMs
   newMean = False
   # create mesh for population average from a morphing algorithm
   if glob(mean_shape_file) == 0 or newMean:
     morph_airway = MorphAirwayTemplateMesh(lm_template[lmOrder['Airway']], 
                                             meanArr[lmOrder['Airway']], 
-                                            mesh_template)
+                                            mesh_template,
+                                            quiet=True)
     morph_airway.mesh_target.write(mean_shape_file)
     for lobe in lobes:
       # lm_template_lobes = np.loadtxt(template_lm_file_lobes.format(key), delimiter=",")
       template_lobe_mesh = v.load(template_mesh_file_lobes.format(lNums[lobe]))
       morph_lobe = MorphLobarTemplateMesh(lm_template[lmOrder[lobe]], 
                                           meanArr[lmOrder[lobe]], 
-                                          template_lobe_mesh)
+                                          template_lobe_mesh,
+                                          quiet=True)
       mean_lobe_file_out = surfDir+'mean{}.stl'.format(lobe)
       morph_lobe.mesh_target.write(mean_lobe_file_out)
 
@@ -376,18 +384,30 @@ if __name__=='__main__':
   #-extract mesh data (coords, normals and faces)
   for key in shapes:
     print('loading {} mesh'.format(key))
-    mesh = mean_mesh[key]
+    print('original num cells', len(mean_mesh[key].faces()))
+
+    if key == 'Airway':
+      mesh = mean_mesh[key].clone().decimate(N=40e3).clean()
+    else:
+      mesh = mean_mesh[key].clone().decimate(fraction=0.1).clean()
+    # mesh.write('decimated.stl')
+    print('decimated num cells', len(mesh.faces()))
+    # vp = v.Plotter(N=2)
+    # vp.show(mean_mesh[key], at=0)
+    # vp.show(mesh, at=1, interactive=True)
+    # exit()
     surfCoords = mesh.points()
-    meanNorms_face = mesh.normals(cells=True)
+    meanNorms_face[key] = mesh.normals(cells=True)
     faces[key] = np.array(mesh.faces())
 
     #-offset to ensure lobes are stacked 
-    surfCoords_mm = surfCoords + carinaArr.mean(axis=0)
-    surfCoords_mmOrig[key] = copy(surfCoords_mm)
-    surfToLMorder = []
+    surfCoords_mm[key] = surfCoords + carinaArr.mean(axis=0)
+    surfCoords_mmOrig[key] = copy(surfCoords_mm[key])
+    surfToLMorder[key] = []
     for point in meanArr[lmOrder['Airway']]:
-      surfToLMorder.append( np.argmin( utils.euclideanDist(surfCoords, 
+      surfToLMorder[key].append( np.argmin( utils.euclideanDist(surfCoords, 
                                                                     point) ) )
+    surfCoords_mm[key] = surfCoords_mm[key][surfToLMorder[key]]
 
   tagBase = copy(tag)
   for t, (tID, tImg, tOrig, tSpace) \
@@ -470,6 +490,28 @@ if __name__=='__main__':
                                                                 meanNorms_face, 
                                                                 surfCoords_mmOrig)
 
+    # ids = np.arange(0, len(points))
+    # norms = np.where( np.isin(faceIDs[:,0], ids) 
+    #                           | np.isin(faceIDs[:,1], ids) 
+    #                           | np.isin(faceIDs[:,2], ids)
+    #                         )[0]
+
+    # for i in ids:
+    #   tmp = np.where(faceIDs[:,0]==i)
+    #   if len(tmp[0])>1:
+    #     print(tmp)
+    # # norms = np.where( np.isin(ids, faceIDs[:,0]) 
+    # #                           | np.isin(ids, faceIDs[:,1]) 
+    # #                           | np.isin(ids, faceIDs[:,2])
+    # #                         )[0]
+
+    # # if len(norms[pID]) > 1:
+    # '''check if y normal for point has +ve and -ve components
+    #    in the projection plane '''
+    # ynorms = faceNorms['RUL'][:,1]
+    # if np.min(ynorms[norms[pID]]) < 0 \
+    #   and np.max(ynorms[norms[pID]]) > 0:
+    # projectionLM_ID = 
     print('finished getting projected landmarks. Time taken = {} s'.format(time()-t1))
 
     assam.fissureLM_ID = 0
@@ -490,25 +532,25 @@ if __name__=='__main__':
     t1 = time()
     lobeBackup = copy(assam)
 
-    # assam.projLM, assam.projLM_ID = assam.deleteShadowedEdges(surfCoords_mm, 
-    #                                                       assam.projLM, 
-    #                                                       assam.projLM_ID,
-    #                                                       )
+    assam.projLM, assam.projLM_ID = assam.deleteShadowedEdges(surfCoords_mm, 
+                                                              assam.projLM, 
+                                                              assam.projLM_ID,
+                                                              )
 
     #-reorder projected surface points to same order as landmarks
-    delInd = []
     print('reordering projected landmarks')
-    for p, point in enumerate(assam.projLM_ID):
-      if np.isin(surfToLMorder, point).sum() > 0: #np.isin(point, surfToLMorder):
-        mappedLM = np.argwhere(np.isin(surfToLMorder, point))
-        assam.projLM_ID[p] = mappedLM[0][0]
-      else:
-        delInd.append(p)
-    print('finished reordering projected landmarks')
-
-    #-delete projected surfPoints which were not included in mapping to LM space
-    assam.projLM_ID = np.delete(assam.projLM_ID, delInd)
-    assam.projLM = np.delete(assam.projLM, delInd)
+    for key in shapes:
+      delInd = []
+      for p, point in enumerate(assam.projLM_ID[key]):
+        if np.isin(surfToLMorder[key], point).sum() > 0: #np.isin(point, surfToLMorder):
+          mappedLM = np.argwhere(np.isin(surfToLMorder[key], point))
+          assam.projLM_ID[key][p] = mappedLM[0][0]
+        else:
+          delInd.append(p)
+      print('finished reordering projected landmarks')
+      #-delete projected surfPoints which were not included in mapping to LM space
+      assam.projLM_ID[key] = np.delete(assam.projLM_ID[key], delInd)
+      assam.projLM[key] = np.delete(assam.projLM[key], delInd)
     #-map projected landmark IDs for each lobe to their correpsonding position in
     #-the 'all' landmark array
     # assam.projLM_ID = []
@@ -547,15 +589,37 @@ if __name__=='__main__':
                                 assam.model_s['ALL'][:len(optAll["b"])]
                                 )
     outShape = assam.centerThenScale(outShape, optAll['scale'], outShape.mean(axis=0))
+
+
+    out_file = 'reconstruction{}_{}.{}'
+    out_surf_file = 'surfaces/'+out_file
+    out_lm_file = 'outputLandmarks/'+out_file
+    np.savetxt(out_lm_file.format(tID, 'ALL', 'csv'), outShape,
+                header='x, y, z', delimiter=',')
+    '''
+    out_airway_file = out_surf_file.format(tID, 'Airway', 'stl')
+    morph_airway = MorphAirwayTemplateMesh(lm_template[lmOrder['Airway']], 
+                                            outShape[lmOrder['Airway']], 
+                                            mesh_template,
+                                            quiet=True)
+    morph_airway.mesh_target.write(out_airway_file)
+    for lobe in lobes:
+      print('morphing', lobe)
+      # lm_template_lobes = np.loadtxt(template_lm_file_lobes.format(key), delimiter=",")
+      template_lobe_mesh = v.load(template_mesh_file_lobes.format(lNums[lobe]))
+      # template_lobe_mesh.decimate(fraction=0.25)
+      morph_lobe = MorphLobarTemplateMesh(lm_template[lmOrder[lobe]], 
+                                          outShape[lmOrder[lobe]], 
+                                          template_lobe_mesh,
+                                          quiet=True)
+      out_lobe_file = out_surf_file.format(tID, lobe, 'stl')
+      morph_lobe.mesh_target.write(out_lobe_file)
+    '''
     plt.close()
     plt.imshow(img, cmap='gray', extent=extent)
     plt.scatter(outShape[:,0], outShape[:,2],s=2,c='black')
-    plt.savefig('images/reconstruction/test{}.png'.format(t), dpi=200)
-    # plt.show()
+    plt.savefig('images/reconstruction/test{}.png'.format(tID), dpi=200)
 
-    outAirway = outShape[np.array(lmOrder['Airway'])]
-    morph = MorphAirwayTemplateMesh(lm_template, outAirway, mesh_template)
-    morph.mesh_target.write('out3948.stl')
 
     # ax[0].imshow(img,cmap="gray", extent=extent) 
     # ax[0].scatter(edgePoints[:,0], edgePoints[:,1],s=2) 

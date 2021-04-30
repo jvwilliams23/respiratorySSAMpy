@@ -70,6 +70,7 @@ class RespiratoryReconstructSSAM:
     self.transform = transform[np.newaxis]
     #-appearance model inputs
     self.density = density #-landmark densities
+
     '''
     # self.img = ssam.sam.normaliseTestImageDensity(img)
     # self.imgCoords = ssam.sam.drrArrToRealWorld(img,
@@ -83,17 +84,17 @@ class RespiratoryReconstructSSAM:
     scaler.fit(img)
     img = scaler.transform(img)
     img *= 0.999 #avoid floating point error in scalar causing img > 1
-    img_filt = utils.bilateralfilter(img, 10)
-    if img_filt.max()>1:
-      img_filt = img_filt/img_filt.max()
-    img_local = utils.localNormalisation(img_filt, 10)
+    # img_filt = utils.bilateralfilter(img, 10)
+    # if img_filt.max()>1:
+    #   img_filt = img_filt/img_filt.max()
+    img_local = utils.localNormalisation(img, 10)
     scaler = MinMaxScaler()
     scaler.fit(img_local)
     img_local = scaler.transform(img_local)
     img_local = np.round(img_local,4)
     self.img = img #-XR image array
     print(img.min(), img.max())
-    self.imgGrad = rank.gradient(img_local, disk(5)) / 255
+    self.imgGrad = rank.gradient(img, disk(5)) / 255
     self.imgCoords = imgCoords #-X and Z coords of X-ray pixels
     self.alignTerm = xRay.mean(axis=0) #-needed for coarse alignment coord frame
 
@@ -188,14 +189,18 @@ class RespiratoryReconstructSSAM:
 
     airway_morphed = all_morphed[self.lmOrder['Airway']]
     #-check shape has not moved to be larger than XR or located outside XR
-    outside_bounds = np.any((all_morphed[:,2]>self.imgCoords[:,1].max()) 
-                            | (all_morphed[:,2]<self.imgCoords[:,1].min())
+    # outside_bounds = np.any((all_morphed[:,2]>self.imgCoords[:,1].max()) 
+    #                         | (all_morphed[:,2]<self.imgCoords[:,1].min())
+    #                         | (all_morphed[:,0]>self.imgCoords[:,0].max())
+    #                         | (all_morphed[:,0]<self.imgCoords[:,0].min())
+    #                         )
+    outside_bounds = np.any((all_morphed[:,2]<self.imgCoords[:,1].min())
                             | (all_morphed[:,0]>self.imgCoords[:,0].max())
                             | (all_morphed[:,0]<self.imgCoords[:,0].min())
                             )
-    # if outside_bounds:
-    #   print("OUTISDE OF BOUNDS")
-    #   return 2 # hard coded, assuming 2 is a large value for loss
+    if outside_bounds:
+      print("OUTISDE OF BOUNDS")
+      return 2 # hard coded, assuming 2 is a large value for loss
 
     self.scale = scale #-set globally to call in fitTerm
     #-intialise
@@ -215,9 +220,9 @@ class RespiratoryReconstructSSAM:
                                         self.scaleShape(all_morphed),
                                         density_t
                                        )
-    prior = np.sum(abs(b)/self.variance)
-    # prior = self.priorTerm(shapeIn, 
-    #                             self.meanScaled)
+    # prior = np.sum(abs(b)/self.variance)
+    prior = self.priorTerm(shapeIn, 
+                           self.meanScaled)
 
     densityFit = self.densityLoss(density_t,
                                     self.density.mean(axis=0), 
@@ -226,10 +231,10 @@ class RespiratoryReconstructSSAM:
     printc("\tfit loss {}\n\tdensity loss {}".format(
               fit,         densityFit))
     printc("\tprior loss", prior)#round(prior,4))
-    c_edge = 0.2
+    # self.c_edge = 0.2
     gradFit = self.gradientTerm(airway_morphed, self.imgGrad, self.imgCoords)
 
-    E = gradFit+(self.c_prior*prior)+(self.c_dense*densityFit)+(self.c_edge*fit)
+    E = 0.3*gradFit+(self.c_prior*prior)+(self.c_dense*densityFit)+(self.c_edge*fit)
 
     printc("\ttotal loss", E)
 
@@ -244,7 +249,7 @@ class RespiratoryReconstructSSAM:
               imgGrad (pixel x pixel, np.ndarray):
               imgCoords (pixel x 2 np.ndarray ):
     '''
-    lmGrad = self.getDensity(coords, imgGrad, imgCoords)[self.projLM_ID]
+    lmGrad = self.getDensity(coords, imgGrad, imgCoords)[self.projLM_ID['Airway']]
     return (-1.0*lmGrad).mean()
 
   def scaleShape(self, shape):
@@ -621,6 +626,8 @@ class RespiratoryReconstructSSAM:
     returns:
         projectionLM array(n, 2): 2D projection coordinates of silhouette landmarks
     '''
+    assert type(points)==type(faceIDs)==type(faceNorms), \
+      'type mismatch in surface faces, normals and points'
 
     if type(points)==dict:
       projectionLM = dict.fromkeys(points.keys())
@@ -648,6 +655,7 @@ class RespiratoryReconstructSSAM:
         projectionLM[shape] = np.array(projectionLM[shape])
         #-delete projection plane from coords
         projectionLM[shape] = np.delete(projectionLM[shape], 1, axis=1)
+        projectionLM_ID[shape] = np.array(projectionLM_ID[shape])
     else:
       norms = []
       projectionLM = []
@@ -667,10 +675,31 @@ class RespiratoryReconstructSSAM:
               projectionLM_ID.append(pID)
         else:
             continue
+      ids = np.arange(0, len(points))
+      np.where( np.isin(faceIDs[:,0], points) \
+                                | (faceIDs[:,1]==pID) \
+                                | (faceIDs[:,2]==pID)
+                              )[0]
+
+      '''
+      projectionLM_ID = []
+      for pID in range(len(points)):
+        norms.append( np.where( (faceIDs[:,0]==pID) \
+                                | (faceIDs[:,1]==pID) \
+                                | (faceIDs[:,2]==pID)
+                              )[0]
+                    )
+        if len(norms[pID]) > 1:
+          if np.min(faceNorms[norms[pID]][:,1]) < 0 \
+          and np.max(faceNorms[norms[pID]][:,1]) > 0:
+              projectionLM_ID.append(pID)
+        else:
+            continue
+      '''
       projectionLM = np.array(projectionLM)
       #-delete projection plane from coords
       projectionLM = np.delete(projectionLM, 1, axis=1)        
-
+      projectionLM_ID[shape] = np.array(projectionLM_ID[shape])
     return projectionLM, projectionLM_ID
 
   def saveSurfProjectionComparison(self, E, xRay):
@@ -706,9 +735,11 @@ class RespiratoryReconstructSSAM:
     height = projLM[upperKey][:,1].max()\
              -projLM["RLL"][:,1].min()
     for key in coords.keys():
+      print(key)
       # if key[0] == "L":
       #   continue
-      if key == "RML":
+      delInd = []
+      if key == "RML" or key == 'Airway':
         projLM_ID[key] = np.array(projLM_ID[key])
         continue
       if key == "RLL":
