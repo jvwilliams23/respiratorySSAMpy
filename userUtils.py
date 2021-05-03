@@ -328,7 +328,7 @@ def return_t_counter(t, point):
                                     (t[:,2] == p[2])) ][0,3] for p in point])
     return n
 
-def plotLoss(lossList, scale="linear", dir="./", stage=""):
+def plotLoss(lossList, scale="linear", wdir="./", stage=""):
     plt.close()
     fig, ax = plt.subplots(1,1)
     ax.plot(np.arange(0,len(lossList)), lossList, lw=1)
@@ -336,7 +336,7 @@ def plotLoss(lossList, scale="linear", dir="./", stage=""):
     ax.set_yscale("linear")
     ax.set_ylabel("Loss")
     ax.set_xlabel("Iteration")
-    plt.savefig("loss"+stage+".pdf")
+    plt.savefig(wdir+"loss"+stage+".pdf")
     return None
 
 def saveHistogram(distances, fileLabel=""):
