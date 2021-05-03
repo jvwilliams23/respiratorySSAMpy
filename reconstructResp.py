@@ -302,11 +302,6 @@ if __name__=='__main__':
                               usecols=[1,2,3])[1]*-1
 
 
-
-
-  #-load mesh data and create silhouette
-
-
   #-create appearance model instance and load data
   ssam = RespiratorySSAM(landmarks, 
                           lmProj, 
@@ -390,12 +385,8 @@ if __name__=='__main__':
       mesh = mean_mesh[key].clone().decimate(N=40e3).clean()
     else:
       mesh = mean_mesh[key].clone().decimate(fraction=0.1).clean()
-    # mesh.write('decimated.stl')
     print('decimated num cells', len(mesh.faces()))
-    # vp = v.Plotter(N=2)
-    # vp.show(mean_mesh[key], at=0)
-    # vp.show(mesh, at=1, interactive=True)
-    # exit()
+    #-load mesh data and create silhouette
     surfCoords = mesh.points()
     meanNorms_face[key] = mesh.normals(cells=True)
     faces[key] = np.array(mesh.faces())
@@ -404,7 +395,7 @@ if __name__=='__main__':
     surfCoords_mm[key] = surfCoords + carinaArr.mean(axis=0)
     surfCoords_mmOrig[key] = copy(surfCoords_mm[key])
     surfToLMorder[key] = []
-    for point in meanArr[lmOrder['Airway']]:
+    for point in meanArr[lmOrder[key]]:
       surfToLMorder[key].append( np.argmin( utils.euclideanDist(surfCoords, 
                                                                     point) ) )
     surfCoords_mm[key] = surfCoords_mm[key][surfToLMorder[key]]
