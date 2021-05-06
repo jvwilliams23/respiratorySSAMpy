@@ -28,7 +28,7 @@ from scipy.spatial.distance import cdist, pdist
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
 
-from skimage import io
+from skimage import io, draw
 from skimage.color import rgb2gray
 from skimage.morphology import disk
 from skimage.filters import rank
@@ -80,6 +80,7 @@ class RespiratoryReconstructSSAM:
     # self.imgCoords -= np.array([250,250])*spacing_xr[[0,2]]
     '''
     # format x-ray for image enhancement
+    self.img = copy(img) #-XR image array
     scaler = MinMaxScaler()
     scaler.fit(img)
     img = scaler.transform(img)
@@ -92,7 +93,6 @@ class RespiratoryReconstructSSAM:
     scaler.fit(img_local)
     img_local = scaler.transform(img_local)
     img_local = np.round(img_local,4)
-    self.img = img #-XR image array
     print(img.min(), img.max())
     self.imgGrad = rank.gradient(img, disk(5)) / 255
     self.imgCoords = imgCoords #-X and Z coords of X-ray pixels
@@ -181,8 +181,7 @@ class RespiratoryReconstructSSAM:
     
     if pose.size == 2:
         pose = np.insert(pose, 1, 0)
-    #align = np.mean(shape[key], axis=0)
-    align = self.transform
+    align = np.mean(all_morphed, axis=0)
     all_morphed = self.centerThenScale(all_morphed, scale, align)
     #-apply transformation to shape
     all_morphed = all_morphed + pose
@@ -198,9 +197,6 @@ class RespiratoryReconstructSSAM:
                             | (all_morphed[:,0]>self.imgCoords[:,0].max())
                             | (all_morphed[:,0]<self.imgCoords[:,0].min())
                             )
-    if outside_bounds:
-      print("OUTISDE OF BOUNDS")
-      return 2 # hard coded, assuming 2 is a large value for loss
 
     self.scale = scale #-set globally to call in fitTerm
     #-intialise
@@ -225,32 +221,132 @@ class RespiratoryReconstructSSAM:
                            self.meanScaled)
 
     densityFit = self.densityLoss(density_t,
-                                    self.density.mean(axis=0), 
-                                    self.model_g['ALL'][:len(self.b)], 
-                                    self.b)
+                                  self.density.mean(axis=0), 
+                                  self.model_g['ALL'][:len(self.b)], 
+                                  self.b)
     printc("\tfit loss {}\n\tdensity loss {}".format(
               fit,         densityFit))
     printc("\tprior loss", prior)#round(prior,4))
     # self.c_edge = 0.2
+    tallest_pt = airway_morphed[np.argmax(airway_morphed[:,2])]
     gradFit = self.gradientTerm(airway_morphed, self.imgGrad, self.imgCoords)
 
+    top_dist = 1.0-np.exp(-1.0*abs(tallest_pt[2]-self.imgCoords[:,1].max())/5.0)
+    # top_dist = abs(tallest_pt[2]-self.imgCoords[:,1].max())
+
     E = 0.3*gradFit+(self.c_prior*prior)+(self.c_dense*densityFit)+(self.c_edge*fit)
+    E += top_dist*0.2
+    print('top dist', top_dist)
+    if outside_bounds:
+      print("OUTISDE OF BOUNDS")
+      E += 0.25
+      # return 2 # hard coded, assuming 2 is a large value for loss
+    # if self.optIter > 3000:
+    #   E += 0.02*self.anatomicalShadow(self.img, self.imgCoords, 
+    #                                  airway_morphed, self.lmOrder)
 
     printc("\ttotal loss", E)
 
     if self.optIter % 100 == 0:
-      self.overlayAirwayOnXR(self.img, all_morphed)
+      self.overlayAirwayOnXR(self.img, all_morphed, scale, pose)
     return E
 
   def gradientTerm(self, coords, imgGrad, imgCoords):
     '''
-        Inputs: 
-              coords (Nx3 np.ndarray):
-              imgGrad (pixel x pixel, np.ndarray):
-              imgCoords (pixel x 2 np.ndarray ):
+    Inputs: 
+          coords (Nx3 np.ndarray):
+          imgGrad (pixel x pixel, np.ndarray):
+          imgCoords (pixel x 2 np.ndarray ):
     '''
     lmGrad = self.getDensity(coords, imgGrad, imgCoords)[self.projLM_ID['Airway']]
     return (-1.0*lmGrad).mean()
+
+  def anatomicalShadow(self, img, img_coords, landmarks, lmOrder, 
+                        kernel_distance=18, kernel_radius=12):
+
+    extent=[-self.img.shape[1]/2.*self.spacing_xr[0],  
+              self.img.shape[1]/2.*self.spacing_xr[0],  
+              -self.img.shape[0]/2.*self.spacing_xr[2],  
+              self.img.shape[0]/2.*self.spacing_xr[2] ]
+    skeleton_ids = lmOrder['SKELETON']
+    airway_ids = lmOrder['Airway']
+    airway_surf_ids = airway_ids[~np.isin(airway_ids,skeleton_ids)]
+    airway_surf_ids = airway_surf_ids[np.isin(airway_surf_ids, self.projLM_ID['Airway'])]
+
+    skel_pts = landmarks[skeleton_ids][:,[0,2]]
+    silhouette_pts = landmarks[airway_surf_ids][:,[0,2]]
+
+    dists = cdist(silhouette_pts, skel_pts) 
+    nearest_skel_pt = np.argmin(dists, axis=1)
+    vec = silhouette_pts - skel_pts[nearest_skel_pt]
+    div = np.sqrt(np.einsum('ij,ij->i', vec, vec)) 
+    norm_vec = np.divide(vec, np.c_[div, div])
+
+    all_p_in = silhouette_pts + norm_vec*kernel_distance*self.spacing_xr[[0,2]]
+    all_p_out = silhouette_pts - norm_vec*kernel_distance*self.spacing_xr[[0,2]]
+    # energy = np.zeros(len(all_p_out))
+    energy = []
+    for p, (p_in, p_out) in enumerate(zip(all_p_in, all_p_out)):
+      outside_bounds = np.any((p_in[1]<img_coords[:,1].min())
+                            | (p_in[1]>img_coords[:,1].max())
+                            | (p_in[0]<img_coords[:,0].min())
+                            | (p_in[0]>img_coords[:,0].max())
+                            | (p_out[1]<img_coords[:,1].min())
+                            | (p_out[1]>img_coords[:,1].max())
+                            | (p_out[0]<img_coords[:,0].min())
+                            | (p_out[0]>img_coords[:,0].max())
+                            )
+      if outside_bounds:
+        continue
+      # print(self.spacing_xr[[0,2]])
+      # get nearest coord index
+      p_in_index = [len(img)-1-np.argmin(abs(img_coords[:,0]-p_in[0])),
+                    len(img)-1-np.argmin(abs(img_coords[:,1]-p_in[1]))]
+      p_out_index = [len(img)-1-np.argmin(abs(img_coords[:,0]-p_out[0])),
+                    len(img)-1-np.argmin(abs(img_coords[:,1]-p_out[1]))]
+      # print(p_in, p_out)
+      # print(p_in_index, p_out_index)
+      # print(norm_vec[p])
+      # get anatomical shadow value
+      # c_in = img[draw.circle(p_in_index[1], p_in_index[0], 
+      #                         kernel_radius, img.shape)]
+      # c_out = img[draw.circle(p_out_index[1], p_out_index[0], 
+      #                         kernel_radius, img.shape)]
+      c_in = img[draw.circle(p_in_index[1], p_in_index[0], 
+                              kernel_radius, img.shape)]
+      c_out = img[draw.circle(p_out_index[1], p_out_index[0], 
+                              kernel_radius, img.shape)]
+
+      # img_in = img.copy()
+      # img_in[draw.circle(p_in_index[1], p_in_index[0], 
+      #                         kernel_radius, img.shape)] = 0
+
+      # img_out = img.copy()
+      # img_in[draw.circle(p_out_index[1], p_out_index[0], 
+      #                         kernel_radius, img.shape)] = 1
+      # plt.close()
+      # airway_all_pts = landmarks[airway_ids][:,[0,2]]
+      # fig, ax =  plt.subplots(1,2)
+      # ax.ravel()
+      # ax[0].imshow(img, cmap='gray', extent=extent)
+      # ax[0].scatter(airway_all_pts[:,0], airway_all_pts[:,1],s=2,c='black')
+      # ax[1].imshow(img_in, cmap='gray', extent=extent)
+      # # ax[1].imshow(img_out, cmap='gray', extent=extent)
+      # ax[1].scatter(silhouette_pts[p,0], silhouette_pts[p,1], s=2, c='blue')
+      # ax[1].scatter(skel_pts[:,0], skel_pts[:,1],s=2,c='black')
+      # plt.show()
+      # exit()
+      
+      energy.append( (c_in.mean() - c_out.mean())/c_out.mean() )
+    # print(energy)
+    energy = np.array(energy)
+    print(energy)
+    # account for empty arrays when all points are outside of the domain
+    if len(energy) == 0:
+      return 0 
+    else:
+      print(energy.sum(), energy.mean())
+      return abs((energy).mean() )
 
   def scaleShape(self, shape):
     '''
@@ -317,7 +413,6 @@ class RespiratoryReconstructSSAM:
     # density_t = density_t #self.getDensity(lm, img, imgCoords)
     return np.sum(abs(density_t-density_m))/density_t.shape[0]
 
-
   def morphShape(self, shape, transform, shapeParams, model):
     '''
     Adjust shape transformation and scale. 
@@ -362,9 +457,9 @@ class RespiratoryReconstructSSAM:
     Adjust shape transformation and scale. 
     Imports to SSM and extracts adjusted shape.
     '''
-    removeTrans = shape - transform
-    removeMean = removeTrans.mean(axis=0)
-    shapeCentre = removeTrans - removeMean
+    # removeTrans = shape - transform
+    removeMean = shape.mean(axis=0)
+    shapeCentre = shape - removeMean
     scaler = shapeCentre.std(axis=0)
     shapeSc = shapeCentre/scaler #StandardScaler().fit_transform(shapeCentre)
 
@@ -385,9 +480,7 @@ class RespiratoryReconstructSSAM:
     #             +shapeSc.mean(axis=0))
     #             *scaler) \
     #             +removeMean+transform
-    shapeOut = (shapeOut
-                *scaler) \
-                +transform #+removeMean
+    shapeOut = (shapeOut*scaler)+removeMean
 
 
     shapeDiff = np.sqrt(np.sum((shapeOut-shape)**2, axis=1))
@@ -437,7 +530,9 @@ class RespiratoryReconstructSSAM:
     recommendation = optimizer.provide_recommendation() #-update recommendation
         
     tag = ''
-    utils.plotLoss(lossLog, stage=self.optimiseStage) #-plot loss
+    utils.plotLoss(lossLog, 
+                    stage=self.optimiseStage, 
+                    wdir='images/reconstruction/') #-plot loss
 
 
     optOut = dict.fromkeys(["pose","scale","b"])
@@ -597,7 +692,7 @@ class RespiratoryReconstructSSAM:
 
     return E_prior
 
-  def overlayAirwayOnXR(self, img, coords):
+  def overlayAirwayOnXR(self, img, coords, scale, pos, tag=''):
     extent=[-self.img.shape[1]/2.*self.spacing_xr[0],  
               self.img.shape[1]/2.*self.spacing_xr[0],  
               -self.img.shape[0]/2.*self.spacing_xr[2],  
@@ -605,7 +700,12 @@ class RespiratoryReconstructSSAM:
     plt.close()
     plt.imshow(img, cmap='gray', extent=extent)
     plt.scatter(coords[:,0], coords[:,2],s=2,c='black')
-    plt.savefig('images/reconstruction/debug/iter{}.png'.format(str(self.optIter)))
+    plt.text(self.imgCoords[:,0].min()*0.9,self.imgCoords[:,1].max()*0.9, 
+             "pos {}, scale{}".format(str(pos), str(scale)))
+    plt.savefig(
+            'images/reconstruction/debug/iter{}{}.png'.format(str(self.optIter),
+                                                              tag)
+                )
     # plt.show()
     # exit()
     return None
