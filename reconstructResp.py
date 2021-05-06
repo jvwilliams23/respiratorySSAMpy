@@ -51,7 +51,7 @@ def getInputs():
                       help='input files (landmarks)'
                       )
   parser.add_argument('--case', '-c',
-                      default=False, 
+                      default='3948', 
                       type=str,#, required=True,
                       help='training data case'
                       )
@@ -138,6 +138,35 @@ def getInputs():
   return inputDir, case, tag, var, drrDir, \
           debugMode, shapeKey, surfDir, numEpochs, \
           xray, c_edge, c_dense, c_prior, imgSpacing
+
+def getShapeParameters(average_landmarks, input_landmarks, 
+                       shape_model, model_std):
+  """
+  Output vector of shape parameters describing a shape with landmarks 
+  corresponding to those used to train the model.
+  N_lms =  number of landmarks.
+  N_train = number of samples in training set.
+
+  Inputs:
+  average_landmarks (np.ndarray N_lms,3): mean shape of training dataset for model
+  input_landmarks (np.ndarray N_lms,3): shape to extract parameters from
+  shape_model (np.ndarray N_train, 3N_lms): shape model extracted from 
+                                            PCA (eigenvectors)
+  model_std (np.array N_train): vector of weightings for each principal component
+
+  returns:
+  shape_parameters (np.array N_train): vector with parameters describing the shape
+  """
+  input_landmarks_vec = input_landmarks.reshape(-1)
+  input_landmarks_vec -= input_landmarks_vec.mean()
+  input_landmarks_vec /= input_landmarks_vec.std()
+  average_landmarks_vec = average_landmarks.reshape(-1)
+  average_landmarks_vec -= average_landmarks_vec.mean()
+  average_landmarks_vec /= average_landmarks_vec.std()
+
+  shape_parameters = np.dot((input_landmarks_vec-average_landmarks_vec), 
+                              shape_model[:len(model_std)].T)/model_std
+  return shape_parameters
 
 if __name__=='__main__':
   date_today = str(date.today())
@@ -249,6 +278,7 @@ if __name__=='__main__':
   # from training
   assignedTestIDs = ["0645", "3948", "5268", "6730", "8865"]
   assignedTestIDs = ["3948"]
+  assignedTestIDs = [case]
   testSize = 1
   testID = []
   randomise_testing =  False
@@ -276,6 +306,8 @@ if __name__=='__main__':
   testSpacing = []
   testIm = []
   testSet.sort()
+  lmProjDef = lmProj.copy()
+  landmarksDef = landmarks.copy()
   for t in testSet[::-1]:
     #-store test data in different list
     testID.append(patientIDs[t])
@@ -301,7 +333,6 @@ if __name__=='__main__':
   carinaTemplate = np.loadtxt(template_lmFileOrig, skiprows=1, delimiter=',',
                               usecols=[1,2,3])[1]*-1
 
-
   #-create appearance model instance and load data
   ssam = RespiratorySSAM(landmarks, 
                           lmProj, 
@@ -312,7 +343,6 @@ if __name__=='__main__':
   density  = ssam.xg_train[:,:,-1]
   model = ssam.phi_sg
   meanArr = np.mean(landmarks, axis=0)
-
 
   #-set number of modes
   numModes = np.where(
@@ -344,6 +374,8 @@ if __name__=='__main__':
                                 dtype=int)
     inputCoords[shape] = meanArr[lmOrder[shape]]
     modelDict[shape] = model.reshape(len(landmarks), -1, 4)[:,lmOrder[shape]]
+  lmOrder['SKELETON'] = np.loadtxt(landmarkDir+'landmarkIndexSkeleton.txt',
+                                    dtype=int)
 
   mesh_template = v.load(template_meshFile)
   mesh_template = mesh_template.pos(carinaTemplate)
@@ -401,8 +433,8 @@ if __name__=='__main__':
     surfCoords_mm[key] = surfCoords_mm[key][surfToLMorder[key]]
 
   tagBase = copy(tag)
-  for t, (tID, tImg, tOrig, tSpace) \
-    in enumerate(zip(testID, testIm, testOrigin, testSpacing)):
+  for t, (tID, tLM, tImg, tOrig, tSpace) \
+    in enumerate(zip(testID, testLM, testIm, testOrigin, testSpacing)):
 
     tag = tagBase+"_case"+tID
     #-declare test image and pre-process
@@ -446,6 +478,15 @@ if __name__=='__main__':
       ax[1].scatter(meanArr[:,0], meanArr[:,2],s=1, c="black") 
       ax[1].scatter(edgePoints[:,0], edgePoints[:,1],s=2, c="blue") 
       plt.show()
+
+    # # fig, ax = plt.subplots(2)
+    # # ax[1].scatter(meanArr[:,0], meanArr[:,2],s=1, c="black") 
+    # # ax[1].scatter(edgePoints[:,0], edgePoints[:,1],s=2, c="blue") 
+    # plt.imshow(img,cmap="gray", extent=extent) 
+    # plt.scatter(lmProjDef[10][:,0], 
+    #             lmProjDef[10][:,2]-lmProjDef[10,:,2].mean(), 
+    #             s=10) 
+    # plt.show()
 
     # inputCoords = meanArr.copy()
     ##########################################################################
@@ -611,6 +652,12 @@ if __name__=='__main__':
     plt.scatter(outShape[:,0], outShape[:,2],s=2,c='black')
     plt.savefig('images/reconstruction/test{}.png'.format(tID), dpi=200)
 
+    # shape parameters for ground truth
+    b_gt = getShapeParameters(inputCoords['ALL'], tLM, 
+                               assam.model_s['ALL'], assam.std)
+    shape_parameter_diff = (b_gt-optAll['b'])
+    print('parameter difference is')
+    print(shape_parameter_diff)
 
     # ax[0].imshow(img,cmap="gray", extent=extent) 
     # ax[0].scatter(edgePoints[:,0], edgePoints[:,1],s=2) 
