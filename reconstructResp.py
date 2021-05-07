@@ -7,6 +7,7 @@ import userUtils as utils
 import numpy as np
 import matplotlib.pyplot as plt
 import random
+import networkx as nx
 from os import remove
 
 import vedo as v
@@ -168,6 +169,49 @@ def getShapeParameters(average_landmarks, input_landmarks,
                               shape_model[:len(model_std)].T)/model_std
   return shape_parameters
 
+def getMeanGraph(caseIDs, 
+                landmarks,
+                mean_landmarks,
+                graph_files='landmarks/manual-jw-diameterFromSurface/nxGraph{}landmarks.pickle'):
+  """
+  Output networkx graph with mean position and additional metadata on 
+  how each graph node matches landmark location in numpy array
+
+  Inputs:
+  caseIDs (list, str)  ordered list of IDs for each training case.
+  landmarks (np.ndarray, N_train, N_lms, 3): all landmarks for all patients
+  mean_landmarks (np.ndarray, N_lms, 3): landmarks averaged over all patients
+  graph_files (str): string used to search for landmarked graphs by caseID
+
+  returns:
+  lgraphMean (nx.DiGraph): directed graph with mean landmark position at each node
+  """
+  lgraphList = [nx.read_gpickle(graph_files.format(cID)) for cID in caseIDs]
+  posList = []
+  for i, lgraph in enumerate(lgraphList):
+    pos = []
+    for node in lgraph.nodes:
+      pos.append(lgraph.nodes[node]['pos'])
+    pos = np.vstack(pos)
+    posList.append(pos)
+  lgraphMean = lgraphList[-1].copy()
+  lgraph = lgraphList[-1].copy()
+  for node in lgraph.nodes:
+    pos = lgraph.nodes[node]['pos']
+    dist = utils.euclideanDist(landmarks[i], pos)
+    currentLM = np.argmin(dist)
+    # find closest graph node, if it is not a landmark then find next closest
+    isin = np.isclose(posList[i], landmarks[i][currentLM]).all(axis=1)
+    while isin.sum() == 0:
+      dist[currentLM] = 100000000
+      currentLM = np.argmin(dist)
+      isin = np.isclose(posList[i], landmarks[i][currentLM]).all(axis=1)
+    # assign metadata to graphs
+    lgraph.nodes[node]['npID'] = currentLM
+    lgraphMean.nodes[node]['pos'] = mean_landmarks[currentLM]
+    lgraphMean.nodes[node]['npID'] = currentLM
+  return lgraphMean
+
 if __name__=='__main__':
   date_today = str(date.today())
   print(__doc__)
@@ -251,6 +295,22 @@ if __name__=='__main__':
                             for l in landmarkDirs])
   nodalCoordsOrig = np.array([np.loadtxt(l, delimiter=",",skiprows=1,usecols=[1,2,3]) 
                             for l in landmarkDirsOrig])
+
+  lmOrder = dict.fromkeys(shapes)
+  lmOrder['SKELETON'] = np.loadtxt(landmarkDir+'landmarkIndexSkeleton.txt',
+                                    dtype=int)
+  lgraph = getMeanGraph(patientIDs, landmarks, landmarks.mean(axis=0))
+  nx.write_gpickle('skelGraphs/nxGraphLandmarkMean.pickle')
+  # extra code below to visualise graph if desired
+  # lines = []
+  # vp = v.Plotter()
+  # for edge in lgraph.edges:
+  #   l = v.Line(lgraph.nodes[edge[0]]['pos'], lgraph.nodes[edge[1]]['pos'], 
+  #               lw=4, c='black')
+  #   lines.append(l)
+  # pNodes = v.Points(landmarks.mean(axis=0)[lmOrder['SKELETON']],r=10,c='black')
+  # vp.show(lines,pNodes)
+  # vp.show(interactive=True)
 
   #-read appearance modelling data
   origin = np.vstack([np.loadtxt(o, skiprows=1)] for o in originDirs)
@@ -364,7 +424,7 @@ if __name__=='__main__':
                "LUL": "7",
                "LLL": "8"
                }
-  lmOrder = dict.fromkeys(shapes)
+  
   modelDict = dict.fromkeys(shapes)
   inputCoords = dict.fromkeys(shapes)
   inputCoords['ALL'] = meanArr
@@ -374,8 +434,6 @@ if __name__=='__main__':
                                 dtype=int)
     inputCoords[shape] = meanArr[lmOrder[shape]]
     modelDict[shape] = model.reshape(len(landmarks), -1, 4)[:,lmOrder[shape]]
-  lmOrder['SKELETON'] = np.loadtxt(landmarkDir+'landmarkIndexSkeleton.txt',
-                                    dtype=int)
 
   mesh_template = v.load(template_meshFile)
   mesh_template = mesh_template.pos(carinaTemplate)
