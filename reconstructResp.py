@@ -300,7 +300,7 @@ if __name__=='__main__':
   lmOrder['SKELETON'] = np.loadtxt(landmarkDir+'landmarkIndexSkeleton.txt',
                                     dtype=int)
   lgraph = getMeanGraph(patientIDs, landmarks, landmarks.mean(axis=0))
-  nx.write_gpickle('skelGraphs/nxGraphLandmarkMean.pickle')
+  nx.write_gpickle(lgraph, 'skelGraphs/nxGraphLandmarkMean.pickle')
   # extra code below to visualise graph if desired
   # lines = []
   # vp = v.Plotter()
