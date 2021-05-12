@@ -234,7 +234,8 @@ class RespiratoryReconstructSSAM:
     top_dist = 1.0-np.exp(-1.0*abs(tallest_pt[2]-self.imgCoords[:,1].max())/5.0)
     # top_dist = abs(tallest_pt[2]-self.imgCoords[:,1].max())
 
-    E = 0.3*gradFit+(self.c_prior*prior)+(self.c_dense*densityFit)+(self.c_edge*fit)
+    E = (self.c_prior*prior)+(self.c_dense*densityFit)+(self.c_edge*fit)
+    # E += 0.3*gradFit
     E += top_dist*0.2
     print('top dist', top_dist)
     if outside_bounds:
@@ -544,32 +545,6 @@ class RespiratoryReconstructSSAM:
 
     return optOut
 
-  def combineAllLobes(self, shape, projLM_ID, fissureLM_ID):
-    keys = list(shape.keys())
-
-    for k, key in enumerate(keys):
-        if k == 0:
-            coordsAll = shape[key]
-            fisIDAll = fissureLM_ID[key]
-            projLM_IDAll = projLM_ID[key]
-        else:
-            #-create 2D array with points from all lobes
-            coordsAll = np.vstack((coordsAll, shape[key]))
-            #-make index of fissure coords consistent with shapeArr
-            fisIDAll_tot = list(
-                                np.array(fissureLM_ID[key])\
-                                +len(shape[keys[k-1]])
-                                )
-            fisIDAll = fisIDAll + fisIDAll_tot
-            #-make index of projection LMs coords consistent with shapeArr
-            projLM_IDAll_tot = list(
-                                    np.array(projLM_ID[key])\
-                                    +len(shape[keys[k-1]])
-                                    )
-            projLM_IDAll = projLM_IDAll + projLM_IDAll_tot
-
-    return coordsAll, projLM_IDAll, fisIDAll
-
   def fitTerm(self, xRay, shapeDict, pointNorms3DDict):
 
     v = 5. #distance weighting factor
@@ -580,24 +555,6 @@ class RespiratoryReconstructSSAM:
     plt.plot(xRay[:,0], xRay[:,1], lw=0, marker="o", ms=2, c="black")
 
     for k, key in enumerate(self.lobes):
-
-      #-get relative distance between fissure landmarks
-      # fd = 1
-      # if self.optimiseStage=="both":
-      #     for pair in self.shapePairs[key]:
-      #         fdFull = cdist(shapeDict[key][self.fissureLM_ID[key]],
-      #                         shapeDict[pair][self.fissureLM_ID[pair]],
-      #                         metric="euclidean")
-
-      #         #-make mahalanobis dist between fissures relative to initial dist
-      #         relFissDist = abs((self.baseFissDists[key][pair]
-      #                           -np.mean(np.min(fdFull,axis=1)) ))
-      #         fd -= np.exp(-relFissDist/5)#**0.5 
-
-      #     print("\trelFissDist {0}, fd term is {1}".format(
-      #                                               round(relFissDist,5),
-      #                                               round(fd,5))
-      #             )
       #-get only fd term for RML
       if key != "RML":
 
@@ -615,59 +572,10 @@ class RespiratoryReconstructSSAM:
         #-get distance term (D_i)
         distArr = cdist(shape, xRay)
         d_i = np.min(distArr, axis=1)
-        D_i = np.exp(-d_i/v) #np.sqrt(np.exp(-d_i/v))
-
-        ''' 
-        closestEdge = np.argmin(distArr, axis=1)
-        copyArr = np.copy(distArr)
-        # hard code min to high value to allow next min to give 2nd lowest
-        copyArr[:,closestEdge] = np.inf 
-        closestEdge_sec = np.argmin(copyArr, axis=1)
-
-        #-get orientation term (w_i)
-        #-get normal vector of two closest points
-        normProj2D = (xRay[closestEdge] - xRay[closestEdge_sec])[:,::-1]
-        normProj2D = np.where(normProj2D==np.zeros(2), 
-                              np.ones(2), 
-                              normProj2D)
-        #-factor to normalise vector
-        div = np.sqrt(np.einsum('ij,ij->i', normProj2D, normProj2D)) 
-        normProj2D = np.divide(normProj2D, np.c_[div, div])
-
-        normProj3D = np.insert(normProj2D, 1, 0, axis=1) # set y index to 0
-        #-adjust point normals for anisotropic surface scaling
-        normLM3D = pointNorms3D/self.scale#np.insert(self.scale[key], 1, 1)
-        div = np.sqrt(np.einsum('ij,ij->i', normLM3D, normLM3D)) 
-        normLM3D = np.divide(normLM3D, np.c_[div, div, div])
-
-        #-do not need to divide by mag as should be unit norms => = 1 
-        alpha = abs(
-                    np.arccos( 
-                            np.einsum('ij,ij->i', normProj3D, normLM3D) 
-                             )*180/pi
-                    )
-        w_i = np.where( alpha>90, 0, np.cos(alpha*pi/180)  )
-        theta = abs( 1 - ( D_i * w_i ) )
-        # theta = abs( 1 - ( D_i * w_i * fd) )
-        ''' 
+        D_i = np.exp(-d_i/v) 
         theta = abs( 1 - D_i )
         
-
         thetaList.append( np.sum(theta) )
-    
-        # plt.plot(shapeDict[key][np.where(( theta!=0 ))[0],0], 
-        #         shapeDict[key][np.where(( theta!=0 ))[0],2], 
-        #         lw=0, marker="o", ms = 2)
-      # else:
-        # # pass
-        # # #-n for RML only uses fissure LMs
-        # n += len(self.fissureLM_ID[key]) 
-        # theta = abs( 1 - (fd) )
-
-        # thetaList.append( np.sum(theta) )
-      # del fd
-
-    
     E_fit = ( 1 / ( n * n_proj) ) * np.sum(thetaList)
     
     return E_fit
@@ -706,15 +614,7 @@ class RespiratoryReconstructSSAM:
             'images/reconstruction/debug/iter{}{}.png'.format(str(self.optIter),
                                                               tag)
                 )
-    # plt.show()
-    # exit()
     return None
-
-  def searchLevelThree(self, img, imgCoords):
-    return img[::8, ::8], imgCoords[::8]
-
-  def searchLevelTwo(self, img, imgCoords):
-    return img[::2,img::2], imgCoords[::2]
 
   def getProjectionLandmarks(self, faceIDs, faceNorms, points):
     '''
