@@ -28,7 +28,7 @@ from scipy.spatial.distance import cdist, pdist
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
 
-from skimage import io, draw
+from skimage import io, draw, filters
 from skimage.color import rgb2gray
 from skimage.morphology import disk
 from skimage.filters import rank
@@ -88,13 +88,14 @@ class RespiratoryReconstructSSAM:
     # img_filt = utils.bilateralfilter(img, 10)
     # if img_filt.max()>1:
     #   img_filt = img_filt/img_filt.max()
-    img_local = utils.localNormalisation(img, 10)
+    img_local = utils.localNormalisation(img, 20)
     scaler = MinMaxScaler()
     scaler.fit(img_local)
     img_local = scaler.transform(img_local)
-    img_local = np.round(img_local,4)
-    print(img.min(), img.max())
-    self.imgGrad = rank.gradient(img, disk(5)) / 255
+    self.img_local = np.round(img_local,4)
+    print(self.img_local.min(), self.img_local.max())
+    self.imgGrad = rank.gradient(self.img_local, disk(5)) / 255
+    print(self.imgGrad.min(), self.imgGrad.max())
     self.imgCoords = imgCoords #-X and Z coords of X-ray pixels
     self.alignTerm = xRay.mean(axis=0) #-needed for coarse alignment coord frame
 
@@ -235,21 +236,26 @@ class RespiratoryReconstructSSAM:
     # top_dist = abs(tallest_pt[2]-self.imgCoords[:,1].max())
 
     E = (self.c_prior*prior)+(self.c_dense*densityFit)+(self.c_edge*fit)
-    # E += 0.3*gradFit
+    # E += 0.1*gradFit
     E += top_dist*0.2
     print('top dist', top_dist)
     if outside_bounds:
       print("OUTISDE OF BOUNDS")
       E += 0.25
       # return 2 # hard coded, assuming 2 is a large value for loss
-    # if self.optIter > 3000:
-    #   E += 0.02*self.anatomicalShadow(self.img, self.imgCoords, 
-    #                                  airway_morphed, self.lmOrder)
-
+    if self.optIter > 1:
+      loss_anatomicalShadow = 1.4*self.anatomicalShadow(self.img_local, self.imgCoords, 
+                                     airway_morphed, self.lmOrder,
+                                     kernel_distance=16, kernel_radius=9)
+      print('anatomicalShadow', loss_anatomicalShadow)
     printc("\ttotal loss", E)
 
     if self.optIter % 100 == 0:
       self.overlayAirwayOnXR(self.img, all_morphed, scale, pose)
+    # if np.isnan(E):
+    #   return 2
+    # else:
+    #   return E
     return E
 
   def gradientTerm(self, coords, imgGrad, imgCoords):
@@ -287,6 +293,7 @@ class RespiratoryReconstructSSAM:
     all_p_out = silhouette_pts - norm_vec*kernel_distance*self.spacing_xr[[0,2]]
     # energy = np.zeros(len(all_p_out))
     energy = []
+    delInd = []
     for p, (p_in, p_out) in enumerate(zip(all_p_in, all_p_out)):
       outside_bounds = np.any((p_in[1]<img_coords[:,1].min())
                             | (p_in[1]>img_coords[:,1].max())
@@ -298,6 +305,7 @@ class RespiratoryReconstructSSAM:
                             | (p_out[0]>img_coords[:,0].max())
                             )
       if outside_bounds:
+        delInd.append(p)
         continue
       # print(self.spacing_xr[[0,2]])
       # get nearest coord index
@@ -337,17 +345,23 @@ class RespiratoryReconstructSSAM:
       # ax[1].scatter(skel_pts[:,0], skel_pts[:,1],s=2,c='black')
       # plt.show()
       # exit()
-      
-      energy.append( (c_in.mean() - c_out.mean())/c_out.mean() )
+      energy_at_p = (c_in.mean() - c_out.mean())/c_out.mean()
+      if not np.isnan(energy_at_p):
+        energy.append(energy_at_p)
     # print(energy)
     energy = np.array(energy)
-    print(energy)
+    silhouette_pts = np.delete(silhouette_pts, delInd, axis=0)
+    # plt.scatter(silhouette_pts[:,0], silhouette_pts[:,1], c=energy)
+    # plt.show()
+    # exit()
+
+    # print(energy)
     # account for empty arrays when all points are outside of the domain
     if len(energy) == 0:
       return 0 
     else:
       print(energy.sum(), energy.mean())
-      return abs((energy).mean() )
+      return (energy).mean()
 
   def scaleShape(self, shape):
     '''
@@ -731,6 +745,8 @@ class RespiratoryReconstructSSAM:
         heightMax = 0.8
     else:
         upperKey = "RLL"
+        if 'RLL' not in projLM.keys():
+          return projLM, projLM_ID
         heightMax = 1.3
     height = projLM[upperKey][:,1].max()\
              -projLM["RLL"][:,1].min()

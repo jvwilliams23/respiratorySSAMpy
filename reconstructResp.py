@@ -1,5 +1,5 @@
 '''
-    run script for reconstructing airways from an X-ray
+    run script for reconstructing airways amd lobes from an X-ray
 '''
 
 from concurrent import futures
@@ -52,7 +52,7 @@ def getInputs():
                       help='input files (landmarks)'
                       )
   parser.add_argument('--case', '-c',
-                      default='3948', 
+                      default='8684',#'3948', 
                       type=str,#, required=True,
                       help='training data case'
                       )
@@ -416,14 +416,15 @@ if __name__=='__main__':
   meanArr[:,2] -= lmAlign
 
   shapes = ['Airway', 'RUL', 'RML', 'RLL', 'LUL', 'LLL']
+  # shapes = ['Airway']
   lobes = ['RUL', 'RML', 'RLL', 'LUL', 'LLL']
   # numbering for each lobe in file
   lNums = {"RUL": "4",
-               "RML": "5",
-               "RLL": "6",
-               "LUL": "7",
-               "LLL": "8"
-               }
+           "RML": "5",
+           "RLL": "6",
+           "LUL": "7",
+           "LLL": "8"
+           }
   
   modelDict = dict.fromkeys(shapes)
   inputCoords = dict.fromkeys(shapes)
@@ -439,6 +440,7 @@ if __name__=='__main__':
   mesh_template = mesh_template.pos(carinaTemplate)
   mean_mesh = dict.fromkeys(shapes)
   faces = dict.fromkeys(shapes) # faces of mean surface for each shape
+  surfCoords_centred = dict.fromkeys(shapes)
   surfCoords_mmOrig = dict.fromkeys(shapes) # surface nodes for each shape
   surfCoords_mm = dict.fromkeys(shapes) # surface nodes in same ordering as LMs
   meanNorms_face = dict.fromkeys(shapes) # normals for each face (?) of mean mesh
@@ -481,7 +483,8 @@ if __name__=='__main__':
     meanNorms_face[key] = mesh.normals(cells=True)
     faces[key] = np.array(mesh.faces())
 
-    #-offset to ensure lobes are stacked 
+    #-offset to ensure shapes are aligned to carina
+    surfCoords_centred[key] = copy(surfCoords)
     surfCoords_mm[key] = surfCoords + carinaArr.mean(axis=0)
     surfCoords_mmOrig[key] = copy(surfCoords_mm[key])
     surfToLMorder[key] = []
@@ -580,6 +583,7 @@ if __name__=='__main__':
                                                                 meanNorms_face, 
                                                                 surfCoords_mmOrig)
 
+
     # ids = np.arange(0, len(points))
     # norms = np.where( np.isin(faceIDs[:,0], ids) 
     #                           | np.isin(faceIDs[:,1], ids) 
@@ -622,25 +626,57 @@ if __name__=='__main__':
     t1 = time()
     lobeBackup = copy(assam)
 
+    id_backup = copy(assam.projLM_ID)
     assam.projLM, assam.projLM_ID = assam.deleteShadowedEdges(surfCoords_mm, 
                                                               assam.projLM, 
                                                               assam.projLM_ID,
                                                               )
 
+
     #-reorder projected surface points to same order as landmarks
+    print('number proj airway pts', len(assam.projLM_ID['Airway']))
     print('reordering projected landmarks')
     for key in shapes:
       delInd = []
-      for p, point in enumerate(assam.projLM_ID[key]):
-        if np.isin(surfToLMorder[key], point).sum() > 0: #np.isin(point, surfToLMorder):
-          mappedLM = np.argwhere(np.isin(surfToLMorder[key], point))
-          assam.projLM_ID[key][p] = mappedLM[0][0]
-        else:
-          delInd.append(p)
-      print('finished reordering projected landmarks')
-      #-delete projected surfPoints which were not included in mapping to LM space
-      assam.projLM_ID[key] = np.delete(assam.projLM_ID[key], delInd)
-      assam.projLM[key] = np.delete(assam.projLM[key], delInd)
+      if key == 'Airway':
+        # for p, pointID in enumerate(assam.projLM_ID[key]):
+        newProjIDs = []
+        newProjPos = []
+        for p, point in enumerate(surfCoords_centred[key][id_backup[key]]):
+          dist = utils.euclideanDist(inputCoords[key], point)
+          closest_lm_index = np.argmin(dist)
+          if closest_lm_index not in newProjIDs:
+            newProjIDs.append(closest_lm_index)
+            newProjPos.append(inputCoords[key][closest_lm_index,[0,2]])
+        assam.projLM_ID[key] = copy(newProjIDs)
+        assam.projLM[key] = copy(np.vstack(newProjPos))
+      else:
+        for p, point in enumerate(assam.projLM_ID[key]):
+          if np.isin(surfToLMorder[key], point).sum() > 0: #np.isin(point, surfToLMorder):
+            mappedLM = np.argwhere(np.isin(surfToLMorder[key], point))
+            assam.projLM_ID[key][p] = mappedLM[0][0]
+          else:
+            delInd.append(p)
+        print('finished reordering projected landmarks')
+        #-delete projected surfPoints which were not included in mapping to LM space
+        assam.projLM_ID[key] = np.delete(assam.projLM_ID[key], delInd)
+        assam.projLM[key] = np.delete(assam.projLM[key], delInd)
+
+    if debug:
+      plot_pts = surfCoords_mm['Airway'][assam.projLM_ID['Airway']]
+      print('number proj airway pts', len(assam.projLM_ID['Airway']))
+      plt.close()
+      plt.scatter(plot_pts[:,0], plot_pts[:,2])
+      plt.show()
+      plt.scatter(assam.projLM['Airway'][:,0], assam.projLM['Airway'][:,1])
+      plt.show()
+    '''
+    plot_pts = surfCoords_mm['Airway'][assam.projLM_ID['Airway']]
+
+    plt.close()
+    plt.scatter(plot_pts[:,0], plot_pts[:,2])
+    plt.show()
+    '''
     #-map projected landmark IDs for each lobe to their correpsonding position in
     #-the 'all' landmark array
     # assam.projLM_ID = []

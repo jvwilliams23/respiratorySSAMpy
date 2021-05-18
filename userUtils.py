@@ -235,7 +235,7 @@ def localNormalisation(img, rad=2):
         rad: int, radius of filtering kernel
   '''
   g_i = filters.gaussian(img, rad)
-  sigma = np.sqrt( filters.gaussian( (img - g_i)**2 ) )
+  sigma = np.sqrt( filters.gaussian( (img - g_i)**2, rad ) )
   return (img - g_i) / sigma
 
 def mahalanobisDist(x, y):
