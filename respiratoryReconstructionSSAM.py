@@ -183,6 +183,7 @@ class RespiratoryReconstructSSAM:
     if pose.size == 2:
         pose = np.insert(pose, 1, 0)
     align = np.mean(all_morphed, axis=0)
+
     all_morphed = self.centerThenScale(all_morphed, scale, align)
     #-apply transformation to shape
     all_morphed = all_morphed + pose
@@ -243,10 +244,10 @@ class RespiratoryReconstructSSAM:
       print("OUTISDE OF BOUNDS")
       E += 0.25
       # return 2 # hard coded, assuming 2 is a large value for loss
-    if self.optIter > 1:
-      loss_anatomicalShadow = 1.4*self.anatomicalShadow(self.img_local, self.imgCoords, 
-                                     airway_morphed, self.lmOrder,
-                                     kernel_distance=16, kernel_radius=9)
+    # if self.optIter > 1:
+    loss_anatomicalShadow = 0.6*self.anatomicalShadow(self.img_local, self.imgCoords, 
+                                                       airway_morphed, self.lmOrder,
+                                                       kernel_distance=16, kernel_radius=9)
       print('anatomicalShadow', loss_anatomicalShadow)
     printc("\ttotal loss", E)
 
@@ -275,6 +276,7 @@ class RespiratoryReconstructSSAM:
               self.img.shape[1]/2.*self.spacing_xr[0],  
               -self.img.shape[0]/2.*self.spacing_xr[2],  
               self.img.shape[0]/2.*self.spacing_xr[2] ]
+
     skeleton_ids = lmOrder['SKELETON']
     airway_ids = lmOrder['Airway']
     airway_surf_ids = airway_ids[~np.isin(airway_ids,skeleton_ids)]
@@ -348,12 +350,19 @@ class RespiratoryReconstructSSAM:
       energy_at_p = (c_in.mean() - c_out.mean())/c_out.mean()
       if not np.isnan(energy_at_p):
         energy.append(energy_at_p)
+      else:
+        delInd.append(p)
     # print(energy)
     energy = np.array(energy)
     silhouette_pts = np.delete(silhouette_pts, delInd, axis=0)
+
+    '''
+    # for debugging anatomical shadow values
+    # plt.imshow(img, cmap='gray', extent=extent)
     # plt.scatter(silhouette_pts[:,0], silhouette_pts[:,1], c=energy)
     # plt.show()
     # exit()
+    '''
 
     # print(energy)
     # account for empty arrays when all points are outside of the domain

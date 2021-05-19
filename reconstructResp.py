@@ -98,7 +98,7 @@ def getInputs():
                             'Corresponds to string common in landmarks text files'+\
                             '\nRUL, RML, RLL, LUL, LLL, or ALL?'
                       )
-  parser.add_argument('--debug', 
+  parser.add_argument('--debug', '-d',
                       default=False, 
                       type=bool, 
                       help='debug mode -- shows print checks and blocks'+
@@ -668,8 +668,8 @@ if __name__=='__main__':
       plt.close()
       plt.scatter(plot_pts[:,0], plot_pts[:,2])
       plt.show()
-      plt.scatter(assam.projLM['Airway'][:,0], assam.projLM['Airway'][:,1])
-      plt.show()
+      # plt.scatter(assam.projLM['Airway'][:,0], assam.projLM['Airway'][:,1])
+      # plt.show()
     '''
     plot_pts = surfCoords_mm['Airway'][assam.projLM_ID['Airway']]
 
