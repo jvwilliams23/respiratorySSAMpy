@@ -248,7 +248,7 @@ class RespiratoryReconstructSSAM:
     loss_anatomicalShadow = 0.6*self.anatomicalShadow(self.img_local, self.imgCoords, 
                                                        airway_morphed, self.lmOrder,
                                                        kernel_distance=16, kernel_radius=9)
-      print('anatomicalShadow', loss_anatomicalShadow)
+    print('anatomicalShadow', loss_anatomicalShadow)
     printc("\ttotal loss", E)
 
     if self.optIter % 100 == 0:
