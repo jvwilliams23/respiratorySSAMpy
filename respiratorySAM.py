@@ -225,14 +225,13 @@ class RespiratorySAM:
 
   def normaliseTestImageDensity(self, density_im):
     '''
-    Sets density to 0 mean and std deviation of 1 for all datasets
+    Sets density to 0 mean and std deviation of 1 for single test image
     '''
 
     #######-------UNSURE ABOUT WHICH AXIS TO USE
     densityN_im = (density_im
-                    -density_im.mean(axis=(1))[:,np.newaxis]
-                    )
-    densityN_im = densityN_im/density_im.std(axis=(1))[:,np.newaxis]
+                    -density_im.mean())
+    densityN_im = densityN_im/density_im.std()
     # densityN_im = (density_im
     #                 -density_im.mean(axis=0)[np.newaxis,:]
     #                 )
