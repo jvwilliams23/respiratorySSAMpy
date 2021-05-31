@@ -557,7 +557,6 @@ if __name__ == "__main__":
   landmarkDir, debug, getMetrics, getModes, writeMean = getInputs()
   num_intermediatePts = 15 #25
 
-
   trainSplit = 0.99
 
   landmarkFiles = glob( landmarkDir+"/landmarks*.csv")
