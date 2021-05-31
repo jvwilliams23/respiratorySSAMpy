@@ -226,12 +226,12 @@ class RespiratoryReconstructSSAM:
                                   self.density.mean(axis=0), 
                                   self.model_g['ALL'][:len(self.b)], 
                                   self.b)
-    printc("\tfit loss {}\n\tdensity loss {}".format(
+    print("\tfit loss {}\n\tdensity loss {}".format(
               fit,         densityFit))
-    printc("\tprior loss", prior)#round(prior,4))
+    print("\tprior loss", prior)#round(prior,4))
     # self.c_edge = 0.2
     tallest_pt = airway_morphed[np.argmax(airway_morphed[:,2])]
-    gradFit = self.gradientTerm(airway_morphed, self.imgGrad, self.imgCoords)
+    # gradFit = self.gradientTerm(airway_morphed, self.imgGrad, self.imgCoords)
 
     top_dist = 1.0-np.exp(-1.0*abs(tallest_pt[2]-self.imgCoords[:,1].max())/5.0)
     # top_dist = abs(tallest_pt[2]-self.imgCoords[:,1].max())
@@ -241,15 +241,15 @@ class RespiratoryReconstructSSAM:
     E += top_dist*0.2
     print('top dist', top_dist)
     if outside_bounds:
-      print("OUTISDE OF BOUNDS")
+      print("OUTSIDE OF BOUNDS")
       E += 0.25
       # return 2 # hard coded, assuming 2 is a large value for loss
     # if self.optIter > 1:
     loss_anatomicalShadow = 0.6*self.anatomicalShadow(self.img_local, self.imgCoords, 
                                                        airway_morphed, self.lmOrder,
-                                                       kernel_distance=16, kernel_radius=9)
+                                                       kernel_distance=9, kernel_radius=7)
     print('anatomicalShadow', loss_anatomicalShadow)
-    printc("\ttotal loss", E)
+    print("\ttotal loss", E)
 
     if self.optIter % 100 == 0:
       self.overlayAirwayOnXR(self.img, all_morphed, scale, pose)
@@ -279,11 +279,13 @@ class RespiratoryReconstructSSAM:
 
     skeleton_ids = lmOrder['SKELETON']
     airway_ids = lmOrder['Airway']
+    # get airway points not on skeleton (surface only)
     airway_surf_ids = airway_ids[~np.isin(airway_ids,skeleton_ids)]
+    # get surface points that are in projected points list
     airway_surf_ids = airway_surf_ids[np.isin(airway_surf_ids, self.projLM_ID['Airway'])]
 
     skel_pts = landmarks[skeleton_ids][:,[0,2]]
-    silhouette_pts = landmarks[airway_surf_ids][:,[0,2]]
+    silhouette_pts = landmarks[airway_surf_ids][:,[0,2]][::4]
 
     dists = cdist(silhouette_pts, skel_pts) 
     nearest_skel_pt = np.argmin(dists, axis=1)
@@ -574,8 +576,8 @@ class RespiratoryReconstructSSAM:
     n = 0 #initialise number of points
     thetaList = []# * len(shapeDict.keys())
 
-    plt.close()
-    plt.plot(xRay[:,0], xRay[:,1], lw=0, marker="o", ms=2, c="black")
+    # plt.close()
+    # plt.plot(xRay[:,0], xRay[:,1], lw=0, marker="o", ms=2, c="black")
 
     for k, key in enumerate(self.lobes):
       #-get only fd term for RML
