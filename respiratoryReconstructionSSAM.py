@@ -53,13 +53,22 @@ class RespiratoryReconstructSSAM:
 
   def __init__(self, shape, xRay, lmOrder, normals, transform, 
                 density=None, img=None, imgCoords=None,
-                model=None, modeNum=None, epochs=200, lRateMax=1000,
-                shapePairs=None, 
-                c_edge=1.0, c_prior=0.01, c_dense=0.5):
+                model=None, modeNum=None, epochs=200,
+                c_edge=1.0, c_prior=0.01, c_dense=0.5, c_anatomical=0.6,
+                kernel_distance=9, kernel_radius=7):
+
+    # tunable hyper-parameters
+    self.c_edge = c_edge
+    self.c_prior = c_prior
+    self.c_dense = c_dense
+    self.c_anatomical = c_anatomical
+    self.kernel_distance = kernel_distance
+    self.kernel_radius = kernel_radius
 
     self.lobes = ['RUL', 'RML', 'RLL', 'LUL', 'LLL']
-    self.lmOrder = lmOrder
 
+    # info from training dataset
+    self.lmOrder = lmOrder
     self.shape = shape
     self.shapenorms = normals
     self.xRay = xRay #-XR edge map
@@ -99,21 +108,11 @@ class RespiratoryReconstructSSAM:
     self.imgCoords = imgCoords #-X and Z coords of X-ray pixels
     self.alignTerm = xRay.mean(axis=0) #-needed for coarse alignment coord frame
 
-    self.scale = 1
-    self.translate = np.array([0.,0.])
-    self.shapePairs = shapePairs
-
-    self.c_edge = c_edge
-    self.c_prior = c_prior
-    self.c_dense = c_dense
-
     self.optIter = 0
     self.optIterSuc = 0
     self.optStage = "align"
-    # self.lRate = 1-(np.logspace(0.0, 2, int(round(epochs/10)))
-    #               /np.logspace(0.0, 2, int(round(epochs/10))).max())
-    self.lRate = np.logspace(2, 0., lRateMax)/100
 
+    self.scale = 1
     self.coordsAll = None
     self.projLM_IDAll = None
     self.fisIDAll = None
@@ -245,9 +244,16 @@ class RespiratoryReconstructSSAM:
       E += 0.25
       # return 2 # hard coded, assuming 2 is a large value for loss
     # if self.optIter > 1:
-    loss_anatomicalShadow = 0.6*self.anatomicalShadow(self.img_local, self.imgCoords, 
-                                                       airway_morphed, self.lmOrder,
-                                                       kernel_distance=9, kernel_radius=7)
+    loss_anatomicalShadow = (self.c_anatomical
+                             *self.anatomicalShadow(  
+                                                      self.img_local, 
+                                                      self.imgCoords, 
+                                                      airway_morphed, 
+                                                      self.lmOrder,
+                                                      kernel_distance=self.kernel_distance, 
+                                                      kernel_radius=self.kernel_radius
+                                                    )
+                            )
     print('anatomicalShadow', loss_anatomicalShadow)
     print("\ttotal loss", E)
 
@@ -1151,13 +1157,13 @@ if __name__ == "__main__":
   # describedVariance = 0.9#0.9
 
   #-dict of lobes and adjacent lobes (used for getting fissures)
-  shapePairs = {
-                "RUL": ["RML", "RLL"],
-                "RML": ["RUL", "RLL"],
-                "RLL": ["RUL", "RML"],
-                "LUL": ["LLL"],
-                "LLL": ["LUL"]
-               }
+  # shapePairs = {
+  #               "RUL": ["RML", "RLL"],
+  #               "RML": ["RUL", "RLL"],
+  #               "RLL": ["RUL", "RML"],
+  #               "LUL": ["LLL"],
+  #               "LLL": ["LUL"]
+  #              }
   if "ALL" in shapes:
     subshapes = ["RUL", "RML","RLL", "LUL", "LLL"]
   else:
@@ -1467,7 +1473,6 @@ if __name__ == "__main__":
                     density=density,
                     model=model,
                     modeNum=numModes,
-                    shapePairs=shapePairs,
                     c_edge=c_edge,
                     c_prior=c_prior,
                     c_dense=c_dense)
