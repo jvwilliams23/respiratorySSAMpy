@@ -230,13 +230,13 @@ class RespiratoryReconstructSSAM:
     print("\tprior loss", prior)#round(prior,4))
     # self.c_edge = 0.2
     tallest_pt = airway_morphed[np.argmax(airway_morphed[:,2])]
-    # gradFit = self.gradientTerm(airway_morphed, self.imgGrad, self.imgCoords)
+    gradFit = self.gradientTerm(airway_morphed, self.imgGrad, self.imgCoords)
 
     top_dist = 1.0-np.exp(-1.0*abs(tallest_pt[2]-self.imgCoords[:,1].max())/5.0)
     # top_dist = abs(tallest_pt[2]-self.imgCoords[:,1].max())
 
     E = (self.c_prior*prior)+(self.c_dense*densityFit)+(self.c_edge*fit)
-    # E += 0.1*gradFit
+    E += 0.4*gradFit
     E += top_dist*0.2
     print('top dist', top_dist)
     if outside_bounds:
@@ -277,6 +277,27 @@ class RespiratoryReconstructSSAM:
 
   def anatomicalShadow(self, img, img_coords, landmarks, lmOrder, 
                         kernel_distance=18, kernel_radius=12):
+    '''
+    anatomical shadow function proposed by 
+    Irving, B. et al., 2013. Proc. Fifth Int. Work. Pulm. Image Anal.
+
+    Compares differences in a small kernel either side normal to a silhouette 
+    edge.
+
+    loss = (c_in - c_out) / c_out
+    where c is the average gray-value inside the kernel
+
+    Inputs:
+    img (numPixel x numPixel, np.ndarray): x-ray to get densities from.
+    img_coords (numPixel x 2, np.ndarray): x-y coordinates for all pixels
+    landmarks (N x 3, np.ndarray): landmark points on airways
+    lmOrder (dict): IDs of landmarks for each shape (airway, skeleton, lobes)
+    kernel_distance (int): number of pixels separating the inside and outside kernel
+    kernel_radius (int): radius of kernel (units in pixels) 
+
+    returns: 
+    mean loss (float) for anatomical shadow 
+    '''
 
     extent=[-self.img.shape[1]/2.*self.spacing_xr[0],  
               self.img.shape[1]/2.*self.spacing_xr[0],  
@@ -291,7 +312,7 @@ class RespiratoryReconstructSSAM:
     airway_surf_ids = airway_surf_ids[np.isin(airway_surf_ids, self.projLM_ID['Airway'])]
 
     skel_pts = landmarks[skeleton_ids][:,[0,2]]
-    silhouette_pts = landmarks[airway_surf_ids][:,[0,2]][::4]
+    silhouette_pts = landmarks[airway_surf_ids][:,[0,2]][::4] ####################### TUNABLE PARAM
 
     dists = cdist(silhouette_pts, skel_pts) 
     nearest_skel_pt = np.argmin(dists, axis=1)
