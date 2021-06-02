@@ -276,7 +276,7 @@ class RespiratoryReconstructSSAM:
     return (-1.0*lmGrad).mean()
 
   def anatomicalShadow(self, img, img_coords, landmarks, lmOrder, 
-                        kernel_distance=18, kernel_radius=12):
+                        kernel_distance, kernel_radius):
     '''
     anatomical shadow function proposed by 
     Irving, B. et al., 2013. Proc. Fifth Int. Work. Pulm. Image Anal.
