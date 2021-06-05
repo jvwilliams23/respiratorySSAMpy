@@ -54,14 +54,17 @@ class RespiratoryReconstructSSAM:
   def __init__(self, shape, xRay, lmOrder, normals, transform, 
                 density=None, img=None, imgCoords=None,
                 model=None, modeNum=None, epochs=200,
-                c_edge=1.0, c_prior=0.01, c_dense=0.5, c_anatomical=0.6,
+                c_edge=1.0, c_prior=0.01, c_dense=0.5, 
+                c_anatomical=0.6, c_grad=0.4, 
                 kernel_distance=9, kernel_radius=7):
 
     # tunable hyper-parameters
     self.c_edge = c_edge
     self.c_prior = c_prior
     self.c_dense = c_dense
+    # to vary in parameter study!
     self.c_anatomical = c_anatomical
+    self.c_grad = c_grad
     self.kernel_distance = kernel_distance
     self.kernel_radius = kernel_radius
 
@@ -236,7 +239,7 @@ class RespiratoryReconstructSSAM:
     # top_dist = abs(tallest_pt[2]-self.imgCoords[:,1].max())
 
     E = (self.c_prior*prior)+(self.c_dense*densityFit)+(self.c_edge*fit)
-    E += 0.4*gradFit
+    E += self.c_grad*gradFit
     E += top_dist*0.2
     print('top dist', top_dist)
     if outside_bounds:
@@ -255,6 +258,7 @@ class RespiratoryReconstructSSAM:
                                                     )
                             )
     print('anatomicalShadow', loss_anatomicalShadow)
+    E += loss_anatomicalShadow
     print("\ttotal loss", E)
 
     if self.optIter % 100 == 0:
