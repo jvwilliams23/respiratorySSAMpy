@@ -824,7 +824,7 @@ if __name__=='__main__':
     plt.close()
     plt.imshow(img, cmap='gray', extent=extent)
     plt.scatter(outShape[:,0], outShape[:,2],s=2,c='black')
-    plt.savefig('images/reconstruction/test{}.png'.format(tID), dpi=200)
+    plt.savefig('images/reconstruction/{}.png'.format(tag), dpi=200)
 
     # shape parameters for ground truth
     b_gt = getShapeParameters(inputCoords['ALL'], tLM, 

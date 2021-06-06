@@ -263,7 +263,7 @@ class RespiratoryReconstructSSAM:
     E += loss_anatomicalShadow
     print("\ttotal loss", E)
 
-    if self.optIter % 100 == 0:
+    if self.optIter % 100 == 0 and not self.quiet:
       self.overlayAirwayOnXR(self.img, all_morphed, scale, pose)
     # if np.isnan(E):
     #   return 2
@@ -392,7 +392,7 @@ class RespiratoryReconstructSSAM:
     energy = np.array(energy)
     silhouette_pts = np.delete(silhouette_pts, delInd, axis=0)
 
-    if self.optIter % 100 == 0:
+    if self.optIter % 100 == 0 and not self.quiet:
       plt.close()
       # for debugging anatomical shadow values
       fig, ax = plt.subplots()
