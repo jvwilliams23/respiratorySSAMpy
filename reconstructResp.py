@@ -57,7 +57,7 @@ def getInputs():
                       help='training data case'
                       )
   parser.add_argument('--out', '-o',
-                      default='reconstructedAirway', 
+                      default='reconstruction', 
                       type=str,
                       help='output surface tag '
                       )
@@ -797,10 +797,10 @@ if __name__=='__main__':
     outShape = assam.centerThenScale(outShape, optAll['scale'], outShape.mean(axis=0))
 
 
-    out_file = 'reconstruction{}_{}.{}'
+    out_file = '{}_{}.{}'
     out_surf_file = 'surfaces/'+out_file
     out_lm_file = 'outputLandmarks/'+out_file
-    np.savetxt(out_lm_file.format(tID, 'ALL', 'csv'), outShape,
+    np.savetxt(out_lm_file.format(tag, 'ALL', 'csv'), outShape,
                 header='x, y, z', delimiter=',')
     '''
     out_airway_file = out_surf_file.format(tID, 'Airway', 'stl')

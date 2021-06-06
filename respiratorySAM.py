@@ -46,7 +46,7 @@ from scipy.spatial.distance import cdist, pdist
 from time import time
 
 #plot graphs for compactness, specificity etc
-from ssmPlot import *
+# from ssmPlot import *
 # from userUtils import cm2inch, doPCA, trainTestSplit
 import userUtils as utils
 

@@ -34,7 +34,7 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.decomposition import PCA
 
 #plot graphs for compactness, specificity etc
-from ssmPlot import *
+# from ssmPlot import *
 import userUtils as utils
 from trimesh.intersections import mesh_plane
 from morphAirwayTemplateMesh import MorphAirwayTemplateMesh
