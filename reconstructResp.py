@@ -81,6 +81,26 @@ def getInputs():
                       type=float, 
                       help='edge map loss coefficient'
                       )
+  parser.add_argument('--c_anatomical', '-ca',
+                      default=0.6, 
+                      type=float, 
+                      help='anatomical shadow loss coefficient'
+                      )
+  parser.add_argument('--c_grad', '-cg',
+                      default=0.4, 
+                      type=float, 
+                      help='image gradient loss coefficient'
+                      )
+  parser.add_argument('--kernel_radius', '-kr',
+                      default=9, 
+                      type=int, 
+                      help='radius (pixels) of image kernels'
+                      )
+  parser.add_argument('--kernel_distance', '-kd',
+                      default=18, 
+                      type=int, 
+                      help='distance (pixels) between image kernels'
+                      )
   parser.add_argument('--drrs', 
                       default='../xRaySegmentation/DRRs_enhanceAirway/luna16_cannyOutline/', 
                       type=str, 
@@ -121,24 +141,25 @@ def getInputs():
                       )
 
   args = parser.parse_args()
-  inputDir = args.inp
-  tag = args.out
-  case = args.case
-  var = args.var
-  drrDir = args.drrs
-  debugMode = args.debug 
-  shapeKey = args.shapes.split()
-  surfDir = args.meshdir
-  numEpochs = args.epochs
-  xray = args.xray
-  c_edge = args.c_edge
-  c_dense = args.c_dense
-  c_prior = args.c_prior
-  imgSpacing = args.imgSpacing
+  # inputDir = args.inp
+  # tag = args.out
+  # case = args.case
+  # var = args.var
+  # drrDir = args.drrs
+  # debugMode = args.debug 
+  # shapeKey = args.shapes.split()
+  # surfDir = args.meshdir
+  # numEpochs = args.epochs
+  # xray = args.xray
+  # c_edge = args.c_edge
+  # c_dense = args.c_dense
+  # c_prior = args.c_prior
+  # imgSpacing = args.imgSpacing
 
-  return inputDir, case, tag, var, drrDir, \
-          debugMode, shapeKey, surfDir, numEpochs, \
-          xray, c_edge, c_dense, c_prior, imgSpacing
+  # return inputDir, case, tag, var, drrDir, \
+  #         debugMode, shapeKey, surfDir, numEpochs, \
+  #         xray, c_edge, c_dense, c_prior, imgSpacing
+  return args
 
 def getShapeParameters(average_landmarks, input_landmarks, 
                        shape_model, model_std):
@@ -217,10 +238,30 @@ if __name__=='__main__':
   print(__doc__)
   startTime = time()
 
+  args = getInputs()
+  landmarkDir = args.inp
+  case = args.case
+  tag = args.out
+  describedVariance = args.var
+  drrDir = args.drrs
+  debug = args.debug 
+  shapes = args.shapes.split()
+  surfDir = args.meshdir
+  numEpochs = args.epochs
+  xrayEdgeFile = args.xray
+  c_edge = args.c_edge
+  c_dense = args.c_dense
+  c_prior = args.c_prior
+  c_anatomical = args.c_anatomical
+  c_grad = args.c_grad
+  kernel_radius = args.kernel_radius
+  kernel_distance = args.kernel_distance
+  imgSpaceCoeff = args.imgSpacing
 
-  landmarkDir, case, tag, describedVariance, drrDir, debug, \
-          shapes, surfDir, numEpochs, xrayEdgeFile, \
-          c_edge, c_dense, c_prior, imgSpaceCoeff = getInputs()
+
+  # landmarkDir, case, tag, describedVariance, drrDir, debug, \
+  #         shapes, surfDir, numEpochs, xrayEdgeFile, \
+  #         c_edge, c_dense, c_prior, imgSpaceCoeff = getInputs()
   img=None
   spacing_xr=None
 
@@ -584,7 +625,12 @@ if __name__=='__main__':
                                       modeNum=numModes,
                                       c_edge=c_edge,
                                       c_prior=c_prior,
-                                      c_dense=c_dense)
+                                      c_dense=c_dense,
+                                      c_grad=c_grad,
+                                      c_anatomical=c_anatomical,
+                                      kernel_distance=kernel_distance,
+                                      kernel_radius=kernel_radius,
+                                      )
     assam.spacing_xr = spacing_xr
     #-import variables to class
     assam.variance = ssam.variance[:numModes]

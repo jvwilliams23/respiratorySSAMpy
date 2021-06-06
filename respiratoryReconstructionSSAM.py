@@ -56,7 +56,8 @@ class RespiratoryReconstructSSAM:
                 model=None, modeNum=None, epochs=200,
                 c_edge=1.0, c_prior=0.01, c_dense=0.5, 
                 c_anatomical=0.6, c_grad=0.4, 
-                kernel_distance=9, kernel_radius=7):
+                kernel_distance=27, #18,9 
+                kernel_radius=16):#7):
 
     # tunable hyper-parameters
     self.c_edge = c_edge
@@ -67,6 +68,7 @@ class RespiratoryReconstructSSAM:
     self.c_grad = c_grad
     self.kernel_distance = kernel_distance
     self.kernel_radius = kernel_radius
+    self.quiet = True
 
     self.lobes = ['RUL', 'RML', 'RLL', 'LUL', 'LLL']
 
@@ -174,8 +176,9 @@ class RespiratoryReconstructSSAM:
     #-call test parameters from optimizer
     self.b = copy(b)
     
-    print("\t\t opt params ", pose, scale)
-    print("\t\t\t", b)
+    if not self.quiet:
+      print("\t\t opt params ", pose, scale)
+      print("\t\t\t", b)
     #-apply new shape parameters to each lobe
     all_morphed = self.morphAirway(meanShape,#shape[key], 
                                     meanShape.mean(axis=0),  
@@ -241,9 +244,9 @@ class RespiratoryReconstructSSAM:
     E = (self.c_prior*prior)+(self.c_dense*densityFit)+(self.c_edge*fit)
     E += self.c_grad*gradFit
     E += top_dist*0.2
-    print('top dist', top_dist)
+    if not self.quiet: print('top dist', top_dist)
     if outside_bounds:
-      print("OUTSIDE OF BOUNDS")
+      if not self.quiet: print("OUTSIDE OF BOUNDS")
       E += 0.25
       # return 2 # hard coded, assuming 2 is a large value for loss
     # if self.optIter > 1:
@@ -257,7 +260,6 @@ class RespiratoryReconstructSSAM:
                                                       kernel_radius=self.kernel_radius
                                                     )
                             )
-    print('anatomicalShadow', loss_anatomicalShadow)
     E += loss_anatomicalShadow
     print("\ttotal loss", E)
 
@@ -316,7 +318,7 @@ class RespiratoryReconstructSSAM:
     airway_surf_ids = airway_surf_ids[np.isin(airway_surf_ids, self.projLM_ID['Airway'])]
 
     skel_pts = landmarks[skeleton_ids][:,[0,2]]
-    silhouette_pts = landmarks[airway_surf_ids][:,[0,2]][::4] ####################### TUNABLE PARAM
+    silhouette_pts = landmarks[airway_surf_ids][:,[0,2]][:-100] ####################### TUNABLE PARAM
 
     dists = cdist(silhouette_pts, skel_pts) 
     nearest_skel_pt = np.argmin(dists, axis=1)
@@ -361,25 +363,26 @@ class RespiratoryReconstructSSAM:
       c_out = img[draw.circle(p_out_index[1], p_out_index[0], 
                               kernel_radius, img.shape)]
 
-      # img_in = img.copy()
-      # img_in[draw.circle(p_in_index[1], p_in_index[0], 
-      #                         kernel_radius, img.shape)] = 0
+      # if self.optIter % 100:
+      #   img_in = img.copy()
+      #   img_in[draw.circle(p_in_index[1], p_in_index[0], 
+      #                           kernel_radius, img.shape)] = 0
 
-      # img_out = img.copy()
-      # img_in[draw.circle(p_out_index[1], p_out_index[0], 
-      #                         kernel_radius, img.shape)] = 1
-      # plt.close()
-      # airway_all_pts = landmarks[airway_ids][:,[0,2]]
-      # fig, ax =  plt.subplots(1,2)
-      # ax.ravel()
-      # ax[0].imshow(img, cmap='gray', extent=extent)
-      # ax[0].scatter(airway_all_pts[:,0], airway_all_pts[:,1],s=2,c='black')
-      # ax[1].imshow(img_in, cmap='gray', extent=extent)
-      # # ax[1].imshow(img_out, cmap='gray', extent=extent)
-      # ax[1].scatter(silhouette_pts[p,0], silhouette_pts[p,1], s=2, c='blue')
-      # ax[1].scatter(skel_pts[:,0], skel_pts[:,1],s=2,c='black')
-      # plt.show()
-      # exit()
+      #   img_out = img.copy()
+      #   img_in[draw.circle(p_out_index[1], p_out_index[0], 
+      #                           kernel_radius, img.shape)] = 1
+      #   plt.close()
+      #   airway_all_pts = landmarks[airway_ids][:,[0,2]]
+      #   fig, ax =  plt.subplots(1,2)
+      #   ax.ravel()
+      #   ax[0].imshow(img, cmap='gray', extent=extent)
+      #   ax[0].scatter(airway_all_pts[:,0], airway_all_pts[:,1],s=2,c='black')
+      #   ax[1].imshow(img_in, cmap='gray', extent=extent)
+      #   # ax[1].imshow(img_out, cmap='gray', extent=extent)
+      #   ax[1].scatter(silhouette_pts[p,0], silhouette_pts[p,1], s=2, c='blue')
+      #   ax[1].scatter(skel_pts[:,0], skel_pts[:,1],s=2,c='black')
+      #   plt.savefig('images/reconstruction/debug/shadow{}.png'.format(self.optIter))
+
       energy_at_p = (c_in.mean() - c_out.mean())/c_out.mean()
       if not np.isnan(energy_at_p):
         energy.append(energy_at_p)
@@ -389,10 +392,16 @@ class RespiratoryReconstructSSAM:
     energy = np.array(energy)
     silhouette_pts = np.delete(silhouette_pts, delInd, axis=0)
 
+    if self.optIter % 100 == 0:
+      plt.close()
+      # for debugging anatomical shadow values
+      fig, ax = plt.subplots()
+      ax.imshow(img, cmap='gray', extent=extent)
+      scatter = ax.scatter(silhouette_pts[:,0], silhouette_pts[:,1], 
+                            c=energy, s=2)
+      plt.colorbar(scatter)
+      plt.savefig('images/reconstruction/debug/iter{}shadow.png'.format(self.optIter))
     '''
-    # for debugging anatomical shadow values
-    # plt.imshow(img, cmap='gray', extent=extent)
-    # plt.scatter(silhouette_pts[:,0], silhouette_pts[:,1], c=energy)
     # plt.show()
     # exit()
     '''
@@ -402,7 +411,7 @@ class RespiratoryReconstructSSAM:
     if len(energy) == 0:
       return 0 
     else:
-      print(energy.sum(), energy.mean())
+      print('\tanatomicalShadow', energy.sum(), energy.mean())
       return (energy).mean()
 
   def scaleShape(self, shape):
@@ -488,8 +497,9 @@ class RespiratoryReconstructSSAM:
                                 model).reshape(-1,3)
 
     shapeDiff = np.sqrt(np.sum((shapeOut-shapeSc)**2, axis=1))
-    print("shape diff [normalised] \t mean", np.mean(shapeDiff), 
-          "\t max", np.max(shapeDiff))
+    if not self.quiet:
+      print("shape diff [normalised] \t mean", np.mean(shapeDiff), 
+            "\t max", np.max(shapeDiff))
     # shapeOut = ssam.getx_allModes(shapeSc.reshape(-1), 
     #                                 model, 
     #                                 shapeParams)
@@ -504,8 +514,9 @@ class RespiratoryReconstructSSAM:
 
 
     shapeDiff = np.sqrt(np.sum((shapeOut-shape)**2, axis=1))
-    print("shape diff [real space] \t mean", np.mean(shapeDiff), 
-          "\t max", np.max(shapeDiff))
+    if not self.quiet:
+      print("shape diff [real space] \t mean", np.mean(shapeDiff), 
+            "\t max", np.max(shapeDiff))
 
     return shapeOut
 
@@ -527,8 +538,9 @@ class RespiratoryReconstructSSAM:
                                 model).reshape(-1,3)
 
     shapeDiff = np.sqrt(np.sum((shapeOut-shapeSc)**2, axis=1))
-    print("shape diff [normalised] \t mean", np.mean(shapeDiff), 
-          "\t max", np.max(shapeDiff))
+    if not self.quiet:
+      print("shape diff [normalised] \t mean", np.mean(shapeDiff), 
+            "\t max", np.max(shapeDiff))
     # shapeOut = ssam.getx_allModes(shapeSc.reshape(-1), 
     #                                 model, 
     #                                 shapeParams)
@@ -541,8 +553,9 @@ class RespiratoryReconstructSSAM:
 
 
     shapeDiff = np.sqrt(np.sum((shapeOut-shape)**2, axis=1))
-    print("shape diff [real space] \t mean", np.mean(shapeDiff), 
-          "\t max", np.max(shapeDiff))
+    if not self.quiet:
+      print("shape diff [real space] \t mean", np.mean(shapeDiff), 
+            "\t max", np.max(shapeDiff))
 
     return shapeOut
 

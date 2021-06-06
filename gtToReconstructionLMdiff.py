@@ -176,10 +176,11 @@ gt_landmark_graph = assignNewPositionsToTemplateGraph(template_graph, gt_lm)
 out_branch_graph = assignNewPositionsToTemplateGraph(template_bgraph, out_lm)
 gt_branch_graph = assignNewPositionsToTemplateGraph(template_bgraph, gt_lm)
 
-diameter_pts = gt_lm[diameter_ids][:num_diameter_pts]
-diameter = []
 cols = ['black', 'blue', 'green', 'red', 'pink', 'yellow']
 vp = v.Plotter()
+# compute diameter from circumference at cross-sections
+diameter_pts = gt_lm[diameter_ids][:num_diameter_pts]
+diameter = []
 for node in gt_landmark_graph.nodes:
   npID = gt_landmark_graph.nodes[node]['npID']
   gt_diameter_pts = gt_lm[npID+1:npID+1+num_diameter_pts]
