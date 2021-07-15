@@ -35,6 +35,7 @@ from skimage.filters import rank
 
 from time import time
 from datetime import date
+from distutils.util import strtobool
 
 # from reconstructSSAM import LobarPSM
 from respiratorySAM import RespiratorySAM
@@ -68,7 +69,7 @@ class RespiratoryReconstructSSAM:
     self.c_grad = c_grad
     self.kernel_distance = kernel_distance
     self.kernel_radius = kernel_radius
-    self.quiet = True
+    self.quiet = False
 
     self.lobes = ['RUL', 'RML', 'RLL', 'LUL', 'LLL']
 
@@ -263,7 +264,7 @@ class RespiratoryReconstructSSAM:
     E += loss_anatomicalShadow
     print("\ttotal loss", E)
 
-    if self.optIter % 100 == 0 and not self.quiet:
+    if self.optIter % 500 == 0 and not self.quiet:
       self.overlayAirwayOnXR(self.img, all_morphed, scale, pose)
     # if np.isnan(E):
     #   return 2
@@ -318,7 +319,7 @@ class RespiratoryReconstructSSAM:
     airway_surf_ids = airway_surf_ids[np.isin(airway_surf_ids, self.projLM_ID['Airway'])]
 
     skel_pts = landmarks[skeleton_ids][:,[0,2]]
-    silhouette_pts = landmarks[airway_surf_ids][:,[0,2]][:-100] ####################### TUNABLE PARAM
+    silhouette_pts = landmarks[airway_surf_ids][:,[0,2]]
 
     dists = cdist(silhouette_pts, skel_pts) 
     nearest_skel_pt = np.argmin(dists, axis=1)
@@ -392,7 +393,7 @@ class RespiratoryReconstructSSAM:
     energy = np.array(energy)
     silhouette_pts = np.delete(silhouette_pts, delInd, axis=0)
 
-    if self.optIter % 100 == 0 and not self.quiet:
+    if self.optIter % 500 == 0 and not self.quiet:
       plt.close()
       # for debugging anatomical shadow values
       fig, ax = plt.subplots()
@@ -717,10 +718,12 @@ class RespiratoryReconstructSSAM:
                in the projection plane '''
             if np.min(faceNorms[shape][norms[pID]][:,1]) < 0 \
             and np.max(faceNorms[shape][norms[pID]][:,1]) > 0:
-                projectionLM[shape].append(points[shape][pID])
-                projectionLM_ID[shape].append(pID)
-          else:
-              continue
+              projectionLM[shape].append(points[shape][pID])
+              projectionLM_ID[shape].append(pID)
+            # else:
+            #   print(np.array(faceNorms[shape][norms[pID]][:,1]), 
+            #         len(faceNorms[shape][norms[pID]][:,1]))
+
         projectionLM[shape] = np.array(projectionLM[shape])
         #-delete projection plane from coords
         projectionLM[shape] = np.delete(projectionLM[shape], 1, axis=1)
@@ -999,6 +1002,11 @@ def getInputs():
                       type=str, required=True,
                       help='output surface tag '
                       )
+  parser.add_argument('--randomise', '-r',
+                      default=str(True), 
+                      type=strtobool,
+                      help='randomise testing set? [default = true]'
+                      )
   parser.add_argument('--var', '-v',
                       default=0.7, 
                       type=float, 
@@ -1168,9 +1176,22 @@ if __name__ == "__main__":
   print(__doc__)
   startTime = time()
 
-  landmarkDir, case, tag, describedVariance, drrDir, debug, \
-          shapes, surfDir, numEpochs, xrayEdgeFile, \
-          c_edge, c_dense, c_prior, imgSpaceCoeff = getInputs()
+  args = getInputs()
+  landmarkDir = args.inp
+  case = args.case
+  tag = args.out
+  describedVariance = args.var
+  drrDir = args.drrs
+  debug = args.debug 
+  shapes = args.shapes.split()
+  surfDir = args.meshdir
+  numEpochs = args.epochs
+  xrayEdgeFile = args.xray
+  c_edge = args.c_edge
+  c_dense = args.c_dense
+  c_prior = args.c_prior
+  imgSpaceCoeff = args.imgSpacing
+
   img=None
   spacing_xr=None
   template_lm = landmarkDir+"/landmarks0{}-case8684.csv"
@@ -1379,7 +1400,7 @@ if __name__ == "__main__":
   assignedTestIDs = ["0645", "3948", "5268", "6730", "8865"]
   testSize = 5
   testID = []
-  randomise_testing =  True
+  randomise_testing =  args.randomise
   if randomise_testing:
     testSet = np.random.randint(0,len(patientIDs)-1, testSize)
     # check if test and training datasets share overlapping samples
