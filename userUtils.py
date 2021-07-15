@@ -12,6 +12,8 @@ from skimage import filters
 from skimage.filters.rank import mean_bilateral
 from skimage.filters import rank
 from skimage.morphology import ball, disk
+import networkx as nx
+from copy import copy
 
 
 def advance_tCounter(t_c, s, neighbors):
@@ -355,6 +357,63 @@ def saveHistogram(distances, fileLabel=""):
     plt.subplots_adjust(hspace=0.6)
     plt.savefig("histogram"+str(fileLabel)+".png")
     return None
+
+def simplifyGraph(G):
+  ''' Reduce graph containing all skeletonised voxels to only branch points.
+      Loop over the graph until all nodes of degree 2 have been 
+      removed and their incident edges fused
+      params:
+      G: networkx graph
+      returns:
+      networkx graph 
+  '''
+  g = G.copy()
+  # use while loop as we break the for loop once we remove a mid-point node
+  # so loop until there are no nodes with degree = 2 (line to line).
+  # We are left with only degree >= 3 (branch) or degree = 1 (end points)
+  stopLoop = False # for forcing loop to stop if error found in getting edges
+  while any(degree==2 for _, degree in g.degree):
+    if stopLoop and sum(degree==2 for _, degree in g.degree)<=1:
+      break 
+    # prevent error `dictionary changed size during iteration` 
+    g0 = g.copy() 
+    for node, degree in g.degree():
+      # print(g.nodes[node]["pos"])
+      if degree==2:
+        # for directed graphs we need to maintain direction 
+        # (which point is in vs out)
+        if g.is_directed(): 
+          if len(list(g.in_edges(node))) == 0 or len(list(g.out_edges(node))) == 0:
+            # prevent strange issue where no in_edge for some nodes
+            stopLoop = True # force while loop to stop
+            continue
+          a0,b0 = list(g.in_edges(node))[0]
+          a1,b1 = list(g.out_edges(node))[0]
+
+        else:
+          edges = g.edges(node)
+          edges = list(edges)#.__iter__())
+          a0,b0 = edges[0]
+          a1,b1 = edges[1]
+
+        # decide which nodes to save and which to delete
+        if a0 != node:
+          e0 = copy(a0)
+        else:
+          e0 = copy(b0)
+
+        if a1 != node:
+          e1 = copy(a1)
+        else:
+          e1 = copy(b1)
+
+        # remove midpoint and merge two adjacent edges to become one
+        g0.remove_node(node)
+        g0.add_edge(e0, e1)
+        break
+
+    g = g0.copy()
+  return g
 
 def trainTestSplit(inputData, train_size=0.9):
     '''
