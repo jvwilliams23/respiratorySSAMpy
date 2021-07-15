@@ -27,6 +27,7 @@ from skimage.color import rgb2gray
 
 from time import time
 from datetime import date
+from distutils.util import strtobool
 
 
 ''' TODO - sync SAM and SSM classes to conda folder. Can then oimport like
@@ -52,7 +53,7 @@ def getInputs():
                       help='input files (landmarks)'
                       )
   parser.add_argument('--case', '-c',
-                      default='8684',#'3948', 
+                      default='none',#'3948', 
                       type=str,#, required=True,
                       help='training data case'
                       )
@@ -138,6 +139,16 @@ def getInputs():
                       default=1, 
                       type=int, 
                       help='multiplier to coarsen images (must be int)'
+                      )
+  parser.add_argument('-r','--randomise', 
+                      default=str(False), 
+                      type=strtobool, 
+                      help='choose random test samples '
+                      )
+  parser.add_argument('-ts','--testSize', 
+                      default=1, 
+                      type=int, 
+                      help='number of samples in test set'
                       )
 
   args = parser.parse_args()
@@ -331,10 +342,13 @@ if __name__=='__main__':
                             for l in landmarkDirsOrig])
 
   lmOrder = dict.fromkeys(shapes)
-  lmOrder['SKELETON'] = np.loadtxt(landmarkDir+'landmarkIndexSkeleton.txt',
-                                    dtype=int)
+  lmOrder['SKELETON'] = np.loadtxt(landmarkDir+'landmarkIndexSkeleton.txt').astype(int)
   lgraph = getMeanGraph(patientIDs, landmarks, landmarks.mean(axis=0))
-  nx.write_gpickle(lgraph, 'skelGraphs/nxGraphLandmarkMean.pickle')
+  nx.write_gpickle(lgraph, 
+                    'skelGraphs/nxGraphLandmarkMean.pickle')
+  lgraph_branches = utils.simplifyGraph(lgraph)
+  nx.write_gpickle(lgraph_branches, 
+                    'skelGraphs/nxGraphLandmarkMeanBranchesOnly.pickle')
   # extra code below to visualise graph if desired
   # lines = []
   # vp = v.Plotter()
@@ -374,10 +388,11 @@ if __name__=='__main__':
   assignedTestIDs = ["0645", "3948", "5268", "6730", "8865"]
   assignedTestIDs = ["3948"]
   assignedTestIDs = [case]
-  testSize = 1
+  testSize = args.testSize
   testID = []
-  randomise_testing =  False
-  if randomise_testing:
+  randomise_testing = args.randomise # False
+  if randomise_testing or assignedTestIDs[0] == 'none':
+    assignedTestIDs = []
     testSet = np.random.randint(0,len(patientIDs)-1, testSize)
     # check if test and training datasets share overlapping samples
     testOverlapTrain = True  
@@ -388,6 +403,7 @@ if __name__=='__main__':
       for t in testSet[::-1]:
         #-store test data in different list
         testID.append(patientIDs[t])
+    print(randomise_testing, testID)
   else:
     testSet = []
     # assignedTestIDs = ["9484"]
@@ -464,7 +480,7 @@ if __name__=='__main__':
   for shape in shapes:
     lmOrder[shape] = np.loadtxt(landmarkDir+'landmarkIndex{}.txt'.format(shape),
                                 dtype=int)
-    inputCoords[shape] = meanArr[lmOrder[shape]]
+    inputCoords[shape] = copy(meanArr[lmOrder[shape]])
     modelDict[shape] = model.reshape(len(landmarks), -1, 4)[:,lmOrder[shape]]
 
   mean_mesh = dict.fromkeys(shapes)
@@ -479,45 +495,45 @@ if __name__=='__main__':
   templateDir = 'templates/coarserTemplates/'
   mean_shape_file = templateDir+'meanAirway.stl'
 
-  assert  glob(mean_shape_file) != 0 or not newMean, 'error in loading meshes. We created coarsened ones manually - do not overwrite'
-  # if glob(mean_shape_file) == 0 or newMean:
-  #   print('making airway template mesh')
-  #   template_lmFileOrig = 'landmarks/manual-jw/landmarks3948.csv'
-  #   # template_lmFile = 'landmarks/manual-jw-diameterFromSurface/landmarks3948_diameterFromSurf.csv'
-  #   template_lmFile = 'allLandmarks/allLandmarks3948.csv'
-  #   template_airway_file = 'segmentations/template3948/newtemplate3948_mm.stl'
-  #   lm_template = np.loadtxt(template_lmFile, skiprows=1, delimiter=",",
-  #                               usecols=[0,1,2])
-  #   carinaTemplate = np.loadtxt(template_lmFileOrig, skiprows=1, delimiter=',',
-  #                               usecols=[1,2,3])[1]*-1
-  #   template_airway_mesh = v.load(template_airway_file)
-  #   template_airway_mesh = template_airway_mesh.pos(carinaTemplate)
-  #   morph_airway = MorphAirwayTemplateMesh(lm_template[lmOrder['Airway']], 
-  #                                           meanArr[lmOrder['Airway']], 
-  #                                           template_airway_mesh,
-  #                                           sigma=0.3,
-  #                                           quiet=True)
-  #   morph_airway.mesh_target.write(mean_shape_file)
-  #   np.savetxt('templates/meanAirway.csv', meanArr[lmOrder['Airway']],
-  #               delimiter=',', header='x, y, z')
-  #   for lobe in lobes:
-  #     print('making {} template mesh'.format(lobe))
-  #     template_lmFile = 'allLandmarks/allLandmarks8684.csv'
-  #     lm_template = np.loadtxt(template_lmFile, skiprows=1, delimiter=",",
-  #                                 usecols=[0,1,2])
-  #     template_mesh_file_lobes = "/home/josh/3DSlicer/project/luna16Rescaled/case8684/8684_mm_{}.stl"
-  #     # template_mesh_file_lobes = "/home/josh/3DSlicer/project/luna16Rescaled/case3948/3948_mm_{}.stl"
-  #     # lm_template_lobes = np.loadtxt(template_lm_file_lobes.format(key), delimiter=",")
-  #     template_lobe_mesh = v.load(template_mesh_file_lobes.format(lNums[lobe]))
-  #     morph_lobe = MorphLobarTemplateMesh(lm_template[lmOrder[lobe]], 
-  #                                         meanArr[lmOrder[lobe]], 
-  #                                         template_lobe_mesh,
-  #                                         sigma=0.3,
-  #                                         quiet=True)
-  #     mean_lobe_file_out = templateDir+'mean{}.stl'.format(lobe)
-  #     morph_lobe.mesh_target.write(mean_lobe_file_out)
-  #     np.savetxt('templates/mean{}.csv'.format(lobe), meanArr[lmOrder[lobe]],
-  #                 delimiter=',', header='x, y, z')
+  # assert  glob(mean_shape_file) != 0 or not newMean, 'error in loading meshes. We created coarsened ones manually - do not overwrite'
+  if glob(mean_shape_file) == 0 or newMean:
+    print('making airway template mesh')
+    template_lmFileOrig = 'landmarks/manual-jw/landmarks3948.csv'
+    # template_lmFile = 'landmarks/manual-jw-diameterFromSurface/landmarks3948_diameterFromSurf.csv'
+    template_lmFile = 'allLandmarks/allLandmarks3948.csv'
+    template_airway_file = 'segmentations/template3948/newtemplate3948_mm.stl'
+    lm_template = np.loadtxt(template_lmFile, skiprows=1, delimiter=",",
+                                usecols=[0,1,2])
+    carinaTemplate = np.loadtxt(template_lmFileOrig, skiprows=1, delimiter=',',
+                                usecols=[1,2,3])[1]*-1
+    template_airway_mesh = v.load(template_airway_file)
+    template_airway_mesh = template_airway_mesh.pos(carinaTemplate)
+    morph_airway = MorphAirwayTemplateMesh(lm_template[lmOrder['Airway']], 
+                                            meanArr[lmOrder['Airway']], 
+                                            template_airway_mesh,
+                                            sigma=0.3,
+                                            quiet=True)
+    morph_airway.mesh_target.write(mean_shape_file)
+    np.savetxt(templateDir+'meanAirway.csv', meanArr[lmOrder['Airway']],
+                delimiter=',', header='x, y, z')
+    for lobe in lobes:
+      print('making {} template mesh'.format(lobe))
+      template_lmFile = 'allLandmarks/allLandmarks8684.csv'
+      lm_template = np.loadtxt(template_lmFile, skiprows=1, delimiter=",",
+                                  usecols=[0,1,2])
+      template_mesh_file_lobes = "/home/josh/3DSlicer/project/luna16Rescaled/case8684/8684_mm_{}.stl"
+      # template_mesh_file_lobes = "/home/josh/3DSlicer/project/luna16Rescaled/case3948/3948_mm_{}.stl"
+      # lm_template_lobes = np.loadtxt(template_lm_file_lobes.format(key), delimiter=",")
+      template_lobe_mesh = v.load(template_mesh_file_lobes.format(lNums[lobe]))
+      morph_lobe = MorphLobarTemplateMesh(lm_template[lmOrder[lobe]], 
+                                          meanArr[lmOrder[lobe]], 
+                                          template_lobe_mesh,
+                                          sigma=0.3,
+                                          quiet=True)
+      mean_lobe_file_out = templateDir+'mean{}.stl'.format(lobe)
+      morph_lobe.mesh_target.write(mean_lobe_file_out)
+      np.savetxt(templateDir+'mean{}.csv'.format(lobe), meanArr[lmOrder[lobe]],
+                  delimiter=',', header='x, y, z')
 
   for key in shapes:
     mean_shape_file = templateDir+'mean{}.stl'.format(key)
@@ -648,13 +664,20 @@ if __name__=='__main__':
     t1 = time()
     new_projection = False # True if given new mesh to get projection landmarks.
     if len(glob(projLM_file.format('*'))) == 0 or new_projection:
+      # IF MESH IS OVERSAMPLED, THIS CAN BE PROBLEMATIC!
       assam.projLM, assam.projLM_ID = assam.getProjectionLandmarks(faces, 
                                                                   meanNorms_face, 
                                                                   surfCoords_mmOrig)
+      projlm_base = copy(assam.projLM)
+      projlmid_base = copy(assam.projLM_ID)
+
       assam.projLM, assam.projLM_ID = assam.deleteShadowedEdges(surfCoords_mm, 
                                                                 assam.projLM, 
                                                                 assam.projLM_ID,
                                                                 )
+      projlm_basenew = copy(assam.projLM)
+      projlmid_basenew = copy(assam.projLM_ID)
+
       #-reorder projected surface points to same order as landmarks
       print('number proj airway pts', len(assam.projLM_ID['Airway']))
       for key in shapes:
@@ -664,9 +687,11 @@ if __name__=='__main__':
           # for p, pointID in enumerate(assam.projLM_ID[key]):
           newProjIDs = []
           newProjPos = []
+          # find closest surface point for each landmark
           for p, point in enumerate(surfCoords_centred[key][assam.projLM_ID[key]]):
             dist = utils.euclideanDist(inputCoords[key], point)
             closest_lm_index = np.argmin(dist)
+            # prevent duplicating points
             if closest_lm_index not in newProjIDs:
               newProjIDs.append(closest_lm_index)
               newProjPos.append(inputCoords[key][closest_lm_index,[0,2]])
@@ -696,30 +721,7 @@ if __name__=='__main__':
         assam.projLM_ID[key] = np.loadtxt(projLM_ID_file.format(key), 
                                           dtype=int, skiprows=1)
 
-    print('time taken to get projected points', round(time()-t1),'s')
-
-    # ids = np.arange(0, len(points))
-    # norms = np.where( np.isin(faceIDs[:,0], ids) 
-    #                           | np.isin(faceIDs[:,1], ids) 
-    #                           | np.isin(faceIDs[:,2], ids)
-    #                         )[0]
-
-    # for i in ids:
-    #   tmp = np.where(faceIDs[:,0]==i)
-    #   if len(tmp[0])>1:
-    #     print(tmp)
-    # # norms = np.where( np.isin(ids, faceIDs[:,0]) 
-    # #                           | np.isin(ids, faceIDs[:,1]) 
-    # #                           | np.isin(ids, faceIDs[:,2])
-    # #                         )[0]
-
-    # # if len(norms[pID]) > 1:
-    # '''check if y normal for point has +ve and -ve components
-    #    in the projection plane '''
-    # ynorms = faceNorms['RUL'][:,1]
-    # if np.min(ynorms[norms[pID]]) < 0 \
-    #   and np.max(ynorms[norms[pID]]) > 0:
-    # projectionLM_ID = 
+    print('time taken to get projected points', round(time()-t1), 's')
     print('finished getting projected landmarks. Time taken = {} s'.format(time()-t1))
 
     assam.fissureLM_ID = 0
@@ -728,19 +730,16 @@ if __name__=='__main__':
     initPose = np.array([
                           0,
                           0,
-                          scaleInit[0], # scale in horizontal dir
+                          scaleInit[0],
                         ])
 
     bounds = np.array([
                       (-np.inf, np.inf),
                       (-np.inf, np.inf),
                       (0.7, 2),
-                      (-3,3)])#(-3, 3)])
+                      (-3,3)])
 
     t1 = time()
-
-    # lobeBackup = copy(assam)
-    # id_backup = copy(assam.projLM_ID)
 
     if debug:
       plot_pts = surfCoords_mm['Airway'][assam.projLM_ID['Airway']]
@@ -748,18 +747,7 @@ if __name__=='__main__':
       plt.close()
       plt.scatter(plot_pts[:,0], plot_pts[:,2])
       plt.show()
-      # plt.scatter(assam.projLM['Airway'][:,0], assam.projLM['Airway'][:,1])
-      # plt.show()
-    '''
-    plot_pts = surfCoords_mm['Airway'][assam.projLM_ID['Airway']]
 
-    plt.close()
-    plt.scatter(plot_pts[:,0], plot_pts[:,2])
-    plt.show()
-    '''
-    #-map projected landmark IDs for each lobe to their correpsonding position in
-    #-the 'all' landmark array
-    # assam.projLM_ID = []
     #######################################################################
     optTrans_new = dict.fromkeys(["pose", "scale"])#copy(optTrans)
     optTrans_new["pose"] = [0,0]
