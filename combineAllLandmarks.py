@@ -92,10 +92,10 @@ for i, (lobe, c) in enumerate(zip(lobe_list, cols)):
   np.savetxt(out_dir+'landmarkIndex{}.txt'.format(lobe), inds, fmt="%i")
   landmarks = np.hstack((landmarks, lobe_lms[lobe]))
 
-# landmarks -= carinaArr[:,np.newaxis]
-# for lm, pId in zip(landmarks, patientIDs):
-#   out_file = out_dir+'allLandmarks{}.csv'.format(pId)
-#   np.savetxt(out_file, lm, header='x, y, z', delimiter=',')
+landmarks -= carinaArr[:,np.newaxis]
+for lm, pId in zip(landmarks, patientIDs):
+  out_file = out_dir+'allLandmarks{}.csv'.format(pId)
+  np.savetxt(out_file, lm, header='x, y, z', delimiter=',')
 
 #   plt.scatter(lobe_lms[lobe][0,:,0], lobe_lms[lobe][0,:,2], c=c)
 # plt.scatter(airway_lms[0,:,0], airway_lms[0,:,2],c='blue')
