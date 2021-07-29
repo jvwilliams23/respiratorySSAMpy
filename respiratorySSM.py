@@ -356,31 +356,31 @@ class RespiratorySSM:
 def getInputs():
   parser = argparse.ArgumentParser(description='SSM args')
   parser.add_argument('-i','--inp', 
-            default=False, 
-            type=str, 
-            help='input files (landmarkFiles)'
-            )
+                      default='allLandmarks/', 
+                      type=str, 
+                      help='input files (landmarkFiles)'
+                      )
   parser.add_argument('--getMetrics', 
-            default=False, 
-            type=bool, 
-            help='process SSM metrics (compactness etc)'
-            )
+                      default=False, 
+                      type=bool, 
+                      help='process SSM metrics (compactness etc)'
+                      )
   parser.add_argument('--getModes', 
-            default=False, 
-            type=str, 
-            help='write main modes of variation to surface'
-            )
+                      default=False, 
+                      type=str, 
+                      help='write main modes of variation to surface'
+                      )
   parser.add_argument('--writeMean', 
-            default=False, 
-            type=bool, 
-            help='write mean point cloud from all landmarkFiles'
-            )
+                      default=False, 
+                      type=bool, 
+                      help='write mean point cloud from all landmarkFiles'
+                      )
   parser.add_argument('--debug', 
-            default=False, 
-            type=str, 
-            help='debug mode -- shows print checks and blocks'+
-                'plotting outputs'
-            )
+                      default=False, 
+                      type=str, 
+                      help='debug mode -- shows print checks and blocks'+
+                          'plotting outputs'
+                      )
 
   args = parser.parse_args()
   landmarkDir = args.inp
@@ -559,7 +559,7 @@ if __name__ == "__main__":
 
   trainSplit = 0.99
 
-  landmarkFiles = glob( landmarkDir+"/landmarks*.csv")
+  landmarkFiles = glob( landmarkDir+"/allLandmarks*.csv")
   if len(landmarkFiles) == 0:
     print("ERROR: The directories you have declared are empty.",
           "\nPlease check your input arguments.")
