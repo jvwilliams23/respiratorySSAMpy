@@ -123,14 +123,14 @@ def plotSpecErr(error, tag=""):
 def myround(x, base=5):
 	return base * ceil(x/base)
 
-def plotSSMmetrics(compac, recon, gen, spec, tag=""):
+def plotSSMmetrics(compac, recon, gen, spec, tag="", shapeName='shape1'):
 	if tag != "":
 		tag = "-" + tag
 	plt.close()
 	fig, ax = plt.subplots(2,2, figsize=cm2inch(17,17))#, sharex=True)
 	colList = ["black"]
 	col = "black"
-	labels = ["shape1"]
+	labels = [shapeName]
 
 	ntrain = compac.shape[0]
 	xi = np.arange(0,ntrain)+1

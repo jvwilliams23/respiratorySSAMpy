@@ -127,10 +127,11 @@ def cm2inch(*tupl):
     else:
         return tuple(i/inch for i in tupl)
 
-def doPCA(c, expl_var=0.95, plotPCA=False):
+def doPCA(c, expl_var=0.95, quiet=False):
     '''
       Args:
         c = 2D array of components
+        quiet: (bool) turn off print checks
 
       Returns:
         pca, variation of each mode
@@ -142,16 +143,18 @@ def doPCA(c, expl_var=0.95, plotPCA=False):
     pca.fit(c)
     varRat = pca.explained_variance_ratio_
     k = np.where(np.cumsum(varRat)>expl_var)[0][0]
-    print("Reduced to {} components from {} for {}% variation".format(
-                                                  k,len(c),expl_var*100)
-          )
+    if not quiet:
+        print("Reduced to {} components from {} for {}% variation".format(
+                                                      k,len(c),expl_var*100)
+              )
 
     return pca, k
 
-def doSparsePCA(c, expl_var=0.95, plotPCA=False):
+def doSparsePCA(c, expl_var=0.95, quiet=False):
     '''
       Args:
         c = 2D array of components
+        quiet: (bool) turn off print checks
 
       Returns:
         pca, variation of each mode
@@ -162,9 +165,10 @@ def doSparsePCA(c, expl_var=0.95, plotPCA=False):
     pca.fit(c)
     varRat = pca.explained_variance_ratio_
     k = np.where(np.cumsum(varRat)>expl_var)[0][0]
-    print("Reduced to {} components from {} for {}% variation".format(
-                                                  k,len(c),expl_var*100)
-          )
+    if not quiet:
+        print("Reduced to {} components from {} for {}% variation".format(
+                                                      k,len(c),expl_var*100)
+              )
 
     return pca, k
 
@@ -415,20 +419,26 @@ def simplifyGraph(G):
     g = g0.copy()
   return g
 
-def trainTestSplit(inputData, train_size=0.9):
+def trainTestSplit(inputData, train_size=0.9, quiet=False):
     '''
-      Args:
-         inputData (2D array): (3*num landmarks, num samples)
-         train_size (float): 0 < train_size < 1
+    Args:
+    inputData (2D array): (3*num landmarks, num samples)
+    train_size (float): 0 < train_size < 1
+    quiet (bool) turn off print checks
 
-      Splits data into training and testing randomly based on a set 
-      test size
+    Returns:
+    train (np.ndarray): training dataset, shape (ntrain, nlandmarks*nfeatures)
+    train (np.ndarray): training dataset, shape (ntest, nlandmarks*nfeatures)
+
+    Splits data into training and testing randomly based on a set 
+    test size
     '''
     from sklearn.model_selection import train_test_split
     train, test = train_test_split(inputData, 
                                     train_size=train_size)
-    print("set sizes (train | test)")
-    print("\t",train.shape, "|",test.shape)
+    if not quiet:
+        print("set sizes (train | test)")
+        print("\t",train.shape, "|",test.shape)
     return train, test
 
 

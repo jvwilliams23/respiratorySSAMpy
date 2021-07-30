@@ -1,5 +1,5 @@
 '''
-  Develops SSM of airways based on skeleton landmarks
+  Develops SSM of lobes and airways
 
   @author: Josh Williams
 
@@ -47,7 +47,7 @@ def graphToCoords(graph, graphnodes):
 
 class RespiratorySSM:
 
-  def __init__(self, lm, train_size=0.9):
+  def __init__(self, lm, train_size=0.9, quiet=False):
 
     #-import functions
     self.doPCA = utils.doPCA
@@ -84,13 +84,14 @@ class RespiratorySSM:
     to the class (it is not general enough to be needed in all class instances)
     '''
     self.x_train, self.x_test = self.trainTestSplit(self.x_vec_scale,
-                                                    train_size)
+                                                    train_size,
+                                                    quiet=quiet)
 
     self.x_scale_tr = self.x_train
     self.x_scale_te = self.x_test
 
     if __name__=="__main__":
-      self.pca, self.k = self.doPCA(self.x_train, 0.95) #-train the model
+      self.pca, self.k = self.doPCA(self.x_train, 0.95, quiet=quiet) #-train the model
       self.phi = self.pca.components_ #-get principal components
       self.variance = self.pca.explained_variance_
       self.std = np.sqrt(self.variance)
@@ -218,8 +219,7 @@ class RespiratorySSM:
       k = np.where(np.cumsum(pca.explained_variance_ratio_)>k)[0][0]
       print("num components is ", k)
 
-    g_k = 0 #initialise reconstruction error
-
+    g_k = 0 #initialise error
     for n in range(testData.shape[0]):
       s_i = testData[n].reshape(-1,3) #s = shape
       b = np.dot((s_i.reshape(-1) - mean_tr), phi_tr.T)/self.std #-actually b * std, not b
@@ -762,3 +762,56 @@ if __name__ == "__main__":
         else:
           vp.show(lines,origin,pNodes,t, at=i)
       vp.show(interactive=True)
+
+  if getMetrics:
+
+    compac = []
+    reconErr = []
+    genErr = []
+    specErr= []
+
+    trainSplit = 0.95
+    ntrain = int(len(nodalCoords)*trainSplit)-1#[len(nodalCoords)-2, 35-2]
+    N = 100 #30#2#30#5 # number of re-training loops to get statistics
+    compac = np.zeros(shape=(ntrain+1, (N)))
+    reconErr = np.zeros(shape=(ntrain, N))
+    genErr = np.zeros(shape=(ntrain, N))
+    specErr = np.zeros(shape=(ntrain, 2)) #-mean and std dev
+
+    # loop first to get cumulative variance statistics ('compactness')
+    for i in range(N):
+      ssm = RespiratorySSM(nodalCoords, train_size=trainSplit, quiet=True)
+      xBar = ssm.computeMean(ssm.x_scale_tr)
+      compac[:,i] =  np.cumsum(ssm.pca.explained_variance_ratio_)
+    
+    # loop for generalisation, reconstruction and specificity errors
+    for k in np.arange(1,ntrain+1):
+      print("modes =", k)
+      for i in range(N):
+        ssm = RespiratorySSM(nodalCoords, train_size=trainSplit, quiet=True)
+        xBar = ssm.computeMean(ssm.x_scale_tr)
+
+        genErr[k-1,i] = ssm.testGeneralisation(ssm.x_scale_te, 
+                                                xBar,
+                                                ssm.phi, 
+                                                k, 
+                                                ssm.pca)
+        reconErr[k-1,i] = ssm.testReconstruction(ssm.x_scale_tr, 
+                                                  xBar,
+                                                  ssm.phi, 
+                                                  k, 
+                                                  ssm.pca)
+
+      ssm = RespiratorySSM(nodalCoords, train_size=trainSplit, quiet=True)
+      xBar = ssm.computeMean(ssm.x_scale_tr)
+      
+      specErr[k-1,:] = np.array(
+                                ssm.testSpecificity(ssm.x_scale_tr, 
+                                                    xBar,
+                                                    ssm.phi, 
+                                                    k, 
+                                                    ssm.pca,
+                                                    N))
+  from ssmPlot import plotSSMmetrics
+  plotSSMmetrics(compac, reconErr, genErr, specErr, tag="all")#str(shape))
+
