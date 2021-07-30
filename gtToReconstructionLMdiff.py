@@ -30,6 +30,7 @@ def getBranchLength(lgraph, vgraph, landmarks, nTot=10):
   lgraph: new landmark graph which includes midpoints. 
   '''
   lgraph0 = lgraph.copy()
+  root = list(nx.topological_sort(lgraph0))[0]
   for edge in lgraph0.edges:
     # if edge1 is above edge 0 (in hierarchy), then edge1 is proximal one 
     if edge[1] in nx.ancestors(vgraph, edge[0]):
@@ -48,6 +49,9 @@ def getBranchLength(lgraph, vgraph, landmarks, nTot=10):
       if i != 0:
         dist += utils.euclideanDist(inter_pts[i], inter_pts[i-1])
     lgraph0.edges[edge]['length'] = dist
+    lgraph0.edges[edge]['generation'] = nx.shortest_path_length(lgraph0, 
+                                                                root,
+                                                                proximalNode)
   return lgraph0
 
 def getBranchDiameter(lgraph, vgraph, landmarks, nTot=10):
@@ -66,6 +70,7 @@ def getBranchDiameter(lgraph, vgraph, landmarks, nTot=10):
   lgraph: new landmark graph which includes midpoints. 
   '''
   lgraph0 = lgraph.copy()
+  root = list(nx.topological_sort(lgraph0))[0]
   for edge in lgraph0.edges:
     # if edge1 is above edge 0 (in hierarchy), then edge1 is proximal one 
     if edge[1] in nx.ancestors(vgraph, edge[0]):
@@ -82,9 +87,13 @@ def getBranchDiameter(lgraph, vgraph, landmarks, nTot=10):
       ind = e_path[int(round(c))]
       inter_pts_diameter.append(vgraph.nodes[ind]['diameter'])
     lgraph0.edges[edge]['diameter'] = np.mean(inter_pts_diameter)
+    lgraph0.edges[edge]['generation'] = nx.shortest_path_length(lgraph0, 
+                                                                root,
+                                                                proximalNode)
   return lgraph0
 
 def getBranchAngle(graph):
+  root = list(nx.topological_sort(graph))[0]
   for node in graph:
     children = list(graph.successors(node))
     if len(children) >= 2:
@@ -99,11 +108,14 @@ def getBranchAngle(graph):
                                           )
                                 )
       graph.nodes[node]['branch_angle'] = branch_angle
+      graph.nodes[node]['generation'] = nx.shortest_path_length(graph, 
+                                                                  root,
+                                                                  node)
   return graph
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--case', '-c',
-                    default='3948', 
+                    default='8684', 
                     type=str,#, required=True,
                     help='training data case'
                     )
@@ -120,7 +132,7 @@ caseID = args.case
 
 lm_index_file = 'allLandmarks/landmarkIndexAirway.txt'
 airway_lm_index = np.loadtxt(lm_index_file).astype(int)
-out_dir = 'outputLandmarks/reconstruction{}_{}.csv'
+out_dir = 'outputLandmarks/reconstruction_case{}_{}.csv'
 gt_dir = 'allLandmarks/allLandmarks{}.csv'
 gt_mesh_dir = "/home/josh/project/imaging/airwaySSAMpy/segmentations/airwaysForRadiologistWSurf/{}/*.stl" 
 
@@ -160,7 +172,7 @@ def assignNewPositionsToTemplateGraph(template_graph, landmarks):
 
 print('TODO - get curvature per branch!')
 
-skel_ids = np.loadtxt('allLandmarks/landmarkIndexSkeleton.txt', dtype=int)
+skel_ids = np.loadtxt('allLandmarks/landmarkIndexSkeleton.txt').astype(int)
 diameter_ids = ~np.isin(np.arange(0, len(gt_lm)), skel_ids)
 
 num_diameter_pts = 14 # hard code 14 points representing diameter of airways
@@ -217,10 +229,11 @@ length_gt_list = []
 length_out_list = []
 length_diff_list = []
 length_diff_percent_list = []
+gen_list = []
 for edge in out_graph_w_lengths.edges:
   length_out = round(out_graph_w_lengths.edges[edge]['length'], 4)
   length_gt = round(gt_graph_w_lengths.edges[edge]['length'], 4)
-  diff = round(length_gt-length_out, 4)
+  diff = round(length_out-length_gt, 4)
   diff_pct = round(diff/length_gt*100, 4)
   print('gt    output   diff   rel error')
   print(length_gt, length_out, diff, round(diff/length_gt*100, 4),'%')
@@ -229,10 +242,11 @@ for edge in out_graph_w_lengths.edges:
   length_out_list.append(length_out)
   length_diff_list.append(diff)
   length_diff_percent_list.append(diff_pct)
+  gen_list.append(out_graph_w_lengths.edges[edge]['generation'])
 np.savetxt("morphologicalAnalysis/lengthStats{}.txt".format(caseID),
-          np.c_[length_gt_list, length_out_list, 
+          np.c_[gen_list, length_gt_list, length_out_list, 
                 length_diff_list, length_diff_percent_list],
-          header="ground truth\treconstruction\tdifference [mm]\tdifference [%]",
+          header="bifurcation level\tground truth\treconstruction\tdifference [mm]\tdifference [%]",
           fmt="%4f")
 
 print('diameter stats')
@@ -240,10 +254,11 @@ diameter_gt_list = []
 diameter_out_list = []
 diameter_diff_list = []
 diameter_diff_percent_list = []
+gen_list = []
 for edge in out_graph_w_lengths.edges:
   diameter_out = round(out_graph_w_diameter.edges[edge]['diameter'], 4)
   diameter_gt = round(gt_graph_w_diameter.edges[edge]['diameter'], 4)
-  diff = round(diameter_gt-diameter_out, 4)
+  diff = round(diameter_out-diameter_gt, 4)
   diff_pct = round(diff/diameter_gt*100, 4)
   print('gt    output   diff   rel error')
   print(diameter_gt, diameter_out, diff, round(diff/diameter_gt*100, 4),'%')
@@ -252,14 +267,16 @@ for edge in out_graph_w_lengths.edges:
   diameter_out_list.append(diameter_out)
   diameter_diff_list.append(diff)
   diameter_diff_percent_list.append(diff_pct)
+  gen_list.append(gt_graph_w_diameter.edges[edge]['generation'])
 np.savetxt("morphologicalAnalysis/diameterStats{}.txt".format(caseID),
-          np.c_[diameter_gt_list, diameter_out_list, 
+          np.c_[gen_list, diameter_gt_list, diameter_out_list, 
                 diameter_diff_list, diameter_diff_percent_list],
-          header="ground truth\treconstruction\tdifference [mm]\tdifference [%]",
+          header="bifurcation level\tground truth\treconstruction\tdifference [mm]\tdifference [%]",
           fmt="%4f")
 
 out_branch_graph = getBranchAngle(out_branch_graph)
 gt_branch_graph = getBranchAngle(gt_branch_graph)
+
 
 print('branch angle stats below')
 # once have this data for few patients can make boxplot of GT and XR, 
@@ -268,11 +285,12 @@ angle_gt_list = []
 angle_out_list = []
 angle_diff_list = []
 angle_diff_percent_list = []
+gen_list = []
 for node in out_branch_graph.nodes:
   if 'branch_angle' in out_branch_graph.nodes[node].keys():
     angle_out = round(out_branch_graph.nodes[node]['branch_angle']/2, 4)
     angle_gt = round(gt_branch_graph.nodes[node]['branch_angle']/2, 4)
-    diff = angle_gt - angle_out
+    diff =  angle_out - angle_gt
     diff_pct = round(diff/angle_gt*100, 4)
 
     print(angle_gt, angle_out, diff, round(diff/angle_gt*100, 4),'%')
@@ -280,7 +298,29 @@ for node in out_branch_graph.nodes:
     angle_out_list.append(angle_out)
     angle_diff_list.append(diff)
     angle_diff_percent_list.append(diff_pct)
+    gen_list.append(out_branch_graph.nodes[node]['generation'])
 np.savetxt("morphologicalAnalysis/angleStats{}.txt".format(caseID),
-          np.c_[angle_gt_list, angle_out_list, angle_diff_list, angle_diff_percent_list],
-          header="ground truth\treconstruction\tdifference [degrees]\tdifference [%]",
+          np.c_[gen_list, angle_gt_list, angle_out_list, angle_diff_list, angle_diff_percent_list],
+          header="bifurcation level\tground truth\treconstruction\tdifference [degrees]\tdifference [%]",
           fmt="%4f")
+# vp = v.Plotter()
+# for edge in out_branch_graph.edges:
+#   p1 = out_branch_graph.nodes[edge[0]]['pos']
+#   p2 = out_branch_graph.nodes[edge[1]]['pos']
+#   vp += v.Line(p1,p2, c='black')
+# for edge in out_landmark_graph.edges:
+#   p1 = out_landmark_graph.nodes[edge[0]]['pos']
+#   p2 = out_landmark_graph.nodes[edge[1]]['pos']
+#   vp += v.Line(p1,p2, c='black', lw=2)
+  
+# for edge in gt_branch_graph.edges:
+#   p1 = gt_branch_graph.nodes[edge[0]]['pos']
+#   p2 = gt_branch_graph.nodes[edge[1]]['pos']
+#   vp += v.Line(p1,p2, c='blue')
+# for edge in gt_landmark_graph.edges:
+#   p1 = gt_landmark_graph.nodes[edge[0]]['pos']
+#   p2 = gt_landmark_graph.nodes[edge[1]]['pos']
+#   vp += v.Line(p1,p2, c='blue', lw=2)
+# vp.show()
+
+
