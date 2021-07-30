@@ -629,8 +629,8 @@ class RespiratoryReconstructSSAM:
       if key != "RML":
 
         shape = shapeDict[key][self.projLM_ID[key]][:,[0,2]]
+        # plt.scatter(shape[:,0], shape[:,1])
         # pointNorms3D = pointNorms3DDict[key][self.projLM_ID[key]]
-
         d_i = np.zeros(shape.shape[0])
         n += len(shape)
         if len(xRay.shape) > 2: #-if xRay is a 3D array

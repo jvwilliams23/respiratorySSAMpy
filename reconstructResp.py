@@ -1,5 +1,7 @@
 '''
     run script for reconstructing airways amd lobes from an X-ray
+
+    if no input is given, default will create random test set of size = 1
 '''
 
 from concurrent import futures
@@ -143,12 +145,12 @@ def getInputs():
   parser.add_argument('-r','--randomise', 
                       default=str(False), 
                       type=strtobool, 
-                      help='choose random test samples '
+                      help='choose random test samples [default is false]'
                       )
   parser.add_argument('-ts','--testSize', 
                       default=1, 
                       type=int, 
-                      help='number of samples in test set'
+                      help='number of samples in test set [default is 1]'
                       )
 
   args = parser.parse_args()
@@ -662,9 +664,9 @@ if __name__=='__main__':
     projLM_file = 'allLandmarks/projectedMeanLandmarks{}.csv'
     projLM_ID_file = 'allLandmarks/projectedMeanLandmarksID{}.csv'
     t1 = time()
-    new_projection = False # True if given new mesh to get projection landmarks.
+    new_projection = True #False # True if given new mesh to get projection landmarks.
     if len(glob(projLM_file.format('*'))) == 0 or new_projection:
-      # IF MESH IS OVERSAMPLED, THIS CAN BE PROBLEMATIC!
+      # IF MESH TOO FINE, THIS CAN BE PROBLEMATIC!
       assam.projLM, assam.projLM_ID = assam.getProjectionLandmarks(faces, 
                                                                   meanNorms_face, 
                                                                   surfCoords_mmOrig)
@@ -682,33 +684,30 @@ if __name__=='__main__':
       print('number proj airway pts', len(assam.projLM_ID['Airway']))
       for key in shapes:
         print('reordering projected landmarks for', key)
-        delInd = []
-        if key == 'Airway':
-          # for p, pointID in enumerate(assam.projLM_ID[key]):
-          newProjIDs = []
-          newProjPos = []
-          # find closest surface point for each landmark
-          for p, point in enumerate(surfCoords_centred[key][assam.projLM_ID[key]]):
-            dist = utils.euclideanDist(inputCoords[key], point)
-            closest_lm_index = np.argmin(dist)
-            # prevent duplicating points
-            if closest_lm_index not in newProjIDs:
-              newProjIDs.append(closest_lm_index)
-              newProjPos.append(inputCoords[key][closest_lm_index,[0,2]])
-          assam.projLM_ID[key] = copy(newProjIDs)
-          assam.projLM[key] = copy(np.vstack(newProjPos))
-        else:
-          for p, point in enumerate(assam.projLM_ID[key]):
-            if np.isin(surfToLMorder[key], point).sum() > 0: #np.isin(point, surfToLMorder):
-              mappedLM = np.argwhere(np.isin(surfToLMorder[key], point))
-              assam.projLM_ID[key][p] = mappedLM[0][0]
-            else:
-              delInd.append(p)
-          # print('finished reordering projected landmarks')
-          #-delete projected surfPoints which were not included in mapping to LM space
-          assam.projLM_ID[key] = np.delete(assam.projLM_ID[key], delInd)
-          assam.projLM[key] = np.delete(assam.projLM[key], delInd)
+        newProjIDs = []
+        newProjPos = []
+        # find closest surface point for each landmark
+        for p, point in enumerate(surfCoords_centred[key][assam.projLM_ID[key]]):
+          dist = utils.euclideanDist(inputCoords[key], point)
+          closest_lm_index = np.argmin(dist)
+          # prevent duplicating points
+          if closest_lm_index not in newProjIDs:
+            newProjIDs.append(closest_lm_index)
+            newProjPos.append(inputCoords[key][closest_lm_index,[0,2]])
+        assam.projLM_ID[key] = copy(newProjIDs)
+        assam.projLM[key] = copy(np.vstack(newProjPos))
+        # for p, point in enumerate(assam.projLM_ID[key]):
+        #   if np.isin(surfToLMorder[key], point).sum() > 0: #np.isin(point, surfToLMorder):
+        #     mappedLM = np.argwhere(np.isin(surfToLMorder[key], point))
+        #     assam.projLM_ID[key][p] = mappedLM[0][0]
+        #   else:
+        #     delInd.append(p)
+        # print('finished reordering projected landmarks')
+        #-delete projected surfPoints which were not included in mapping to LM space
+        # assam.projLM_ID[key] = np.delete(assam.projLM_ID[key], delInd)
+        # assam.projLM[key] = np.delete(assam.projLM[key], delInd, axis=0)
 
+        print('number of landmarks for', key, 'is', len(assam.projLM_ID[key]))
         np.savetxt(projLM_file.format(key), assam.projLM[key], 
                     header='x y', delimiter=',')
         np.savetxt(projLM_ID_file.format(key), assam.projLM_ID[key], 
@@ -746,8 +745,12 @@ if __name__=='__main__':
       print('number proj airway pts', len(assam.projLM_ID['Airway']))
       plt.close()
       plt.scatter(plot_pts[:,0], plot_pts[:,2])
+      for key in lobes:
+        plt.scatter(assam.projLM[key][:,0], assam.projLM[key][:,1])
+        # plt.scatter(projlm_basenew[key][:,0], projlm_basenew[key][:,1])
+        # plt.scatter(projlm_base[key][:,0], projlm_base[key][:,1])
       plt.show()
-
+    # exit()
     #######################################################################
     optTrans_new = dict.fromkeys(["pose", "scale"])#copy(optTrans)
     optTrans_new["pose"] = [0,0]
@@ -829,7 +832,7 @@ if __name__=='__main__':
     # ax[1].scatter(meanArr[:,0], meanArr[:,2],s=1, c="black") 
     # ax[1].scatter(edgePoints[:,0], edgePoints[:,1],s=2, c="blue") 
 
-    '''
+'''
 ourShape = outShape - outShape[lmOrder['SKELETON'][1]]
 projTest = copy(lmProj_test[0])
 airwayProj_pts = lmOrder['Airway'][np.isin(lmOrder['Airway'], assam.projLM_ID['Airway'])]
@@ -849,8 +852,8 @@ plt.close()
 plt.scatter(ourShape[:,0], ourShape[:,2], s=2, c='blue')
 plt.scatter(projTest[:,0], projTest[:,2], s=2, c='black')
 plt.show()
-    '''
-    '''
+'''
+'''
 
 airwayProj_pts = lmOrder['Airway'][np.isin(lmOrder['Airway'], assam.projLM_ID['Airway'])]
 ourShape = (outShape - outShape[lmOrder['SKELETON'][1]])[airwayProj_pts]
@@ -858,5 +861,4 @@ projTest = copy(lmProj_test[0])[airwayProj_pts]
 plt.close()
 plt.scatter(ourShape[:,0], ourShape[:,2], s=2, c='blue')
 plt.scatter(projTest[:,0], projTest[:,2], s=2, c='black')
-plt.show()
-    '''
+plt.show()'''
