@@ -45,13 +45,6 @@ from respiratorySSM import RespiratorySSM
 from respiratorySSAM import RespiratorySSAM
 from morphAirwayTemplateMesh import MorphAirwayTemplateMesh
 
-
-xRayFile = "interpOut.csv",#"edges-LIDC0002.csv",
-#"xRaySeg/output1CannyEdgesCLIPPED1.csv",
-tag = "_case0"
-template_mesh = "segmentations/template3948/newtemplate3948_mm.stl"
-plotAlignment = False
-
 class RespiratoryReconstructSSAM:
 
   def __init__(self, shape, xRay, lmOrder, normals, transform, 
