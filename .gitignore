@@ -1,2 +1,7 @@
 *.log
 *.sh
+*.png 
+*.pdf
+*.tgz
+*.tar*
+__pycache__/
