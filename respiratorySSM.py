@@ -629,12 +629,12 @@ if __name__ == "__main__":
         while isin.sum() == 0:
           if i==0:
             extraPts.append(v.Points([xBar_n3[currentLM]], r=8).c('red'))
-          print(dist.min(), currentLM)
+          # print(dist.min(), currentLM)
           dist[currentLM] = 100000000
           currentLM = np.argmin(dist)
-          print(dist.min(), currentLM)
+          # print(dist.min(), currentLM)
           isin = np.isclose(posList[i], nodalCoords[i][currentLM]).all(axis=1)
-          print('\t\t',currentLM)
+          # print('\t\t',currentLM)
           if i==0:
             extraPts.append(v.Points([xBar_n3[currentLM]], r=8).c('red'))
 
