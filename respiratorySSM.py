@@ -211,7 +211,7 @@ class RespiratorySSM:
 
     r_k /= (n+1)
 
-    return r_k/max(mean_tr)*100.
+    return r_k#/max(mean_tr)*100.
 
   def testGeneralisation(self, testData, mean_tr, phi_tr, k, pca):
     if k < 1:
@@ -250,7 +250,7 @@ class RespiratorySSM:
     g_k /= (n + 1)
     # print("Reconstruction error is", r_k, r_k/max(mean_tr)*100.,"%" )
 
-    return g_k/max(mean_tr)*100.
+    return g_k#/max(mean_tr)*100.
 
   def testSpecificity(self, trainData, mean_tr, phi_tr, k, pca, N=20):
     '''
@@ -314,8 +314,8 @@ class RespiratorySSM:
         show(p,p2)
         exit()
       spec_k[count] = spec_k_i
-    spec_k /= max(mean_tr)
-    spec_k *= 100.
+    # spec_k /= max(mean_tr)
+    # spec_k *= 100.
 
     #-return mean and standard deviation
     return np.mean(spec_k), np.std(spec_k) 
@@ -772,7 +772,7 @@ if __name__ == "__main__":
 
     trainSplit = 0.95
     ntrain = int(len(nodalCoords)*trainSplit)-1#[len(nodalCoords)-2, 35-2]
-    N = 100 #30#2#30#5 # number of re-training loops to get statistics
+    N = 30#2#30#5 # number of re-training loops to get statistics
     compac = np.zeros(shape=(ntrain+1, (N)))
     reconErr = np.zeros(shape=(ntrain, N))
     genErr = np.zeros(shape=(ntrain, N))
@@ -812,6 +812,7 @@ if __name__ == "__main__":
                                                     k, 
                                                     ssm.pca,
                                                     N))
-  from ssmPlot import plotSSMmetrics
-  plotSSMmetrics(compac, reconErr, genErr, specErr, tag="all")#str(shape))
+  from ssmPlot import plotSSMmetrics, plotSSMmetrics_three 
+  # plotSSMmetrics(compac, reconErr, genErr, specErr, tag="all")#str(shape))
+  plotSSMmetrics_three(compac, reconErr, genErr, tag="all")#str(shape))
 
