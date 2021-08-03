@@ -65,10 +65,6 @@ class RespiratorySSM:
     self.shape = 3
     if normalise:
       self.x_vec = self.lm.reshape(lm.shape[0], lm.shape[1]*lm.shape[2])
-
-      # self.x_vec_scale = StandardScaler().fit_transform(self.x_vec)
-      # self.x_vec_scale = self.x_vec - self.x_vec.mean(axis=0)
-      # self.x_vec_scale = self.x_vec_scale / self.x_vec_scale.std(axis=0)
       self.x_vec_scale = self.x_vec - self.x_vec.mean(axis=1)[:,np.newaxis]
       self.x_vec_scale = self.x_vec_scale / self.x_vec_scale.std(axis=1)[:,np.newaxis]
 
@@ -598,9 +594,7 @@ if __name__ == "__main__":
     pos = np.vstack(pos)
     posList.append(pos)
 
-  nodalCoords_vedo = [v.Points(n) for n in nodalCoords]
-  trans = v.procrustesAlignment(nodalCoords_vedo, rigid=True).transform
-  nodalCoords = np.array([n.applyTransform(trans).points() for n in nodalCoords_vedo])
+  nodalCoords = utils.procrustesAlignVedo(nodalCoords)
 
   diameter = np.ones(nodalCoords.shape[:-1]) # dummy placeholder
   

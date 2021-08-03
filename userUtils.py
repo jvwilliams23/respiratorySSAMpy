@@ -2,6 +2,7 @@ import numpy as np
 import vtk
 import matplotlib.pyplot as plt
 from vedo import printc
+import vedo as v
 from skimage import exposure as ex
 from sklearn.decomposition import PCA, SparsePCA
 
@@ -344,6 +345,19 @@ def plotLoss(lossList, scale="linear", wdir="./", stage=""):
     ax.set_xlabel("Iteration")
     plt.savefig(wdir+"loss"+stage+".pdf")
     return None
+
+def procrustesAlignVedo(coords, rigid=True):
+    '''
+    Use vedo implementation of GPA to remove rotation and translation from dataset
+
+    Args:
+    coords np.ndarray (Nsample, Nlms, 3): landmarks in dataset
+    Returns:
+    Aligned coordinates
+    '''
+    coords_vedo = [v.Points(n) for n in coords]
+    trans = v.procrustesAlignment(coords_vedo, rigid=rigid).transform
+    return np.array([n.applyTransform(trans).points() for n in coords_vedo])
 
 def saveHistogram(distances, fileLabel=""):
     import matplotlib.pyplot as plt
