@@ -63,13 +63,13 @@ class RespiratorySSM:
     nodiameter = True
     self.x_vec_scale = self.x_scale.reshape(len(lm), -1)
     self.shape = 3
-    # self.x_vec = self.lm.reshape(lm.shape[0], lm.shape[1]*lm.shape[2])
+    self.x_vec = self.lm.reshape(lm.shape[0], lm.shape[1]*lm.shape[2])
 
     # self.x_vec_scale = StandardScaler().fit_transform(self.x_vec)
     # self.x_vec_scale = self.x_vec - self.x_vec.mean(axis=0)
     # self.x_vec_scale = self.x_vec_scale / self.x_vec_scale.std(axis=0)
-    # self.x_vec_scale = self.x_vec - self.x_vec.mean(axis=1)[:,np.newaxis]
-    # self.x_vec_scale = self.x_vec_scale / self.x_vec_scale.std(axis=1)[:,np.newaxis]
+    self.x_vec_scale = self.x_vec - self.x_vec.mean(axis=1)[:,np.newaxis]
+    self.x_vec_scale = self.x_vec_scale / self.x_vec_scale.std(axis=1)[:,np.newaxis]
 
     # if type(self.d)==None:
     #   self.x_n3_scale = self.x_vec_scale.reshape(lm.shape[0], -1, 4)
@@ -597,6 +597,10 @@ if __name__ == "__main__":
     pos = np.vstack(pos)
     posList.append(pos)
 
+  nodalCoords_vedo = [v.Points(n) for n in nodalCoords]
+  trans = v.procrustesAlignment(nodalCoords_vedo, rigid=True).transform
+  nodalCoords = np.array([n.applyTransform(trans).points() for n in nodalCoords_vedo])
+
   diameter = np.ones(nodalCoords.shape[:-1]) # dummy placeholder
   
   #initialise shape model
@@ -683,6 +687,7 @@ if __name__ == "__main__":
                                       usecols=[1,2,3])[1]*-1
           mesh_template = v.load(template_meshFile)
           mesh_template = mesh_template.pos(carinaTemplate)
+          print(x.shape, lm_template.shape)
           morph = MorphAirwayTemplateMesh(lm_template, x, mesh_template)
           surfs[i][j] = morph.mesh_target.c(c).alpha(0.4)
           points[i][j] = v.Points(x,r=4).c(c)
@@ -812,7 +817,7 @@ if __name__ == "__main__":
                                                     k, 
                                                     ssm.pca,
                                                     N))
-  from ssmPlot import plotSSMmetrics, plotSSMmetrics_three 
-  # plotSSMmetrics(compac, reconErr, genErr, specErr, tag="all")#str(shape))
-  plotSSMmetrics_three(compac, reconErr, genErr, tag="all")#str(shape))
+    from ssmPlot import plotSSMmetrics, plotSSMmetrics_three 
+    # plotSSMmetrics(compac, reconErr, genErr, specErr, tag="all")#str(shape))
+    plotSSMmetrics_three(compac, reconErr, genErr, tag="all_noErr")#str(shape))
 
