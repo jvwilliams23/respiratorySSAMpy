@@ -47,7 +47,7 @@ def graphToCoords(graph, graphnodes):
 
 class RespiratorySSM:
 
-  def __init__(self, lm, train_size=0.9, quiet=False):
+  def __init__(self, lm, train_size=0.9, quiet=False, normalise=True):
 
     #-import functions
     self.doPCA = utils.doPCA
@@ -63,13 +63,14 @@ class RespiratorySSM:
     nodiameter = True
     self.x_vec_scale = self.x_scale.reshape(len(lm), -1)
     self.shape = 3
-    self.x_vec = self.lm.reshape(lm.shape[0], lm.shape[1]*lm.shape[2])
+    if normalise:
+      self.x_vec = self.lm.reshape(lm.shape[0], lm.shape[1]*lm.shape[2])
 
-    # self.x_vec_scale = StandardScaler().fit_transform(self.x_vec)
-    # self.x_vec_scale = self.x_vec - self.x_vec.mean(axis=0)
-    # self.x_vec_scale = self.x_vec_scale / self.x_vec_scale.std(axis=0)
-    self.x_vec_scale = self.x_vec - self.x_vec.mean(axis=1)[:,np.newaxis]
-    self.x_vec_scale = self.x_vec_scale / self.x_vec_scale.std(axis=1)[:,np.newaxis]
+      # self.x_vec_scale = StandardScaler().fit_transform(self.x_vec)
+      # self.x_vec_scale = self.x_vec - self.x_vec.mean(axis=0)
+      # self.x_vec_scale = self.x_vec_scale / self.x_vec_scale.std(axis=0)
+      self.x_vec_scale = self.x_vec - self.x_vec.mean(axis=1)[:,np.newaxis]
+      self.x_vec_scale = self.x_vec_scale / self.x_vec_scale.std(axis=1)[:,np.newaxis]
 
     # if type(self.d)==None:
     #   self.x_n3_scale = self.x_vec_scale.reshape(lm.shape[0], -1, 4)
