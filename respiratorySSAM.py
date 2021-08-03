@@ -86,6 +86,7 @@ class RespiratorySSAM:
     self.x_vec_scale /= self.x_vec_scale.std(axis=1)[:,np.newaxis]
     # self.x_vec_scale = self.ssm.x_vec_scale
 
+    # only used to get shape of b vectors
     self.x_train = self.ssm.x_vec_scale
     self.g_train = self.density
     # self.x_train, self.x_test = self.ssm.x_train, self.ssm.x_test
