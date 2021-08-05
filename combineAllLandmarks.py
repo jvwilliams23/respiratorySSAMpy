@@ -35,16 +35,16 @@ parser.add_argument('--debug', '-d',
 
 
 args = parser.parse_args()
-# save global paths to landmarks
+# save paths to landmarks
 airway_dir = args.airwayDir
 lobe_dir = args.lobeDir
-debug = args.debug
+debug = args.debug # debug checks
+# where to write combined landmarks to
+out_dir = args.outDir+'/' #'allLandmarks/'
 # transform for airways (carina is at index 1 landmark in array)
 airway_dir_orig = '/home/josh/project/imaging/airwaySSAMpy/landmarks/manual-jw/'
 # transformation for lobes
 trans_dir = "/home/josh/project/imaging/lobarSSMpy/master/savedPointClouds/allLandmarks/"
-# where to write combined landmarks to
-out_dir = args.outDir+'/' #'allLandmarks/'
 if len(glob(out_dir+'/*')) != 0:
   print('write directory not empty!') 
   overwrite = strtobool(input('overwrite landmarks in "{}"?\n'.format(out_dir)))
