@@ -6,16 +6,60 @@ import numpy as np
 from glob import glob 
 import matplotlib.pyplot as plt
 import vedo as v
+import argparse 
+from os import mkdir
+from os.path import exists
+from distutils.util import strtobool
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--lobeDir',
+                    default='/home/josh/project/imaging/lobarSSMpy/master/gamesData_coarse/',#'3948', 
+                    type=str,#, required=True,
+                    help='directory with lung lobe landmarks'
+                    )
+parser.add_argument('--airwayDir',
+                    default='/home/josh/project/imaging/airwaySSAMpy/landmarks/manual-jw-diameterFromSurface/',#'3948', 
+                    type=str,#, required=True,
+                    help='directory with airway landmarks'
+                    )
+parser.add_argument('--outDir', '-o',
+                    default='allLandmarks/', 
+                    type=str,
+                    help='directory to write output combined landmarks to'
+                    )
+parser.add_argument('--debug', '-d',
+                    default=False, 
+                    type=bool,
+                    help='show debug checks'
+                    )
+
+
+args = parser.parse_args()
 # save global paths to landmarks
-airway_dir = '/home/josh/project/imaging/airwaySSAMpy/landmarks/manual-jw-diameterFromSurface/'
-lobe_dir = '/home/josh/project/imaging/lobarSSMpy/master/gamesData_coarse/'
+airway_dir = args.airwayDir
+lobe_dir = args.lobeDir
+debug = args.debug
 # transform for airways (carina is at index 1 landmark in array)
 airway_dir_orig = '/home/josh/project/imaging/airwaySSAMpy/landmarks/manual-jw/'
 # transformation for lobes
 trans_dir = "/home/josh/project/imaging/lobarSSMpy/master/savedPointClouds/allLandmarks/"
 # where to write combined landmarks to
-out_dir = 'allLandmarks/'
+out_dir = args.outDir+'/' #'allLandmarks/'
+if len(glob(out_dir+'/*')) != 0:
+  print('write directory not empty!') 
+  overwrite = strtobool(input('overwrite landmarks in "{}"?\n'.format(out_dir)))
+  if overwrite:
+    print('overwriting current landmarks')
+  else:
+    print('exiting')
+    exit()
+else:
+  if exists(out_dir):
+    if debug: print('directory exists')
+  else:
+    if debug: print('not found')
+    mkdir(out_dir)
+  if debug: print('write directory is empty')
 
 lobe_list = ['RUL', 'RML', 'RLL', 'LUL', 'LLL']
 
