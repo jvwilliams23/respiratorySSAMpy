@@ -137,6 +137,16 @@ def getInputs():
                       type=str,# required=True,
                       help='X-ray outline to use for fitting (2xN csv)'
                       )
+  parser.add_argument('--newMean', 
+                      default=str(False), 
+                      type=strtobool, 
+                      help='Create new mean mesh [default false]'
+                      )
+  parser.add_argument('--newProjLM', 
+                      default=str(False), 
+                      type=strtobool, 
+                      help='Create and save new projected landmarks [default false]'
+                      )
   parser.add_argument('--imgSpacing', 
                       default=1, 
                       type=int, 
@@ -492,7 +502,7 @@ if __name__=='__main__':
   surfCoords_mm = dict.fromkeys(shapes) # surface nodes in same ordering as LMs
   meanNorms_face = dict.fromkeys(shapes) # normals for each face (?) of mean mesh
   surfToLMorder = dict.fromkeys(shapes) # mapping between surface nodes and LMs
-  newMean = False
+  newMean = args.newMean
   # create mesh for population average from a morphing algorithm
   templateDir = 'templates/coarserTemplates/'
   mean_shape_file = templateDir+'meanAirway.stl'
@@ -664,7 +674,7 @@ if __name__=='__main__':
     projLM_file = 'allLandmarks/projectedMeanLandmarks{}.csv'
     projLM_ID_file = 'allLandmarks/projectedMeanLandmarksID{}.csv'
     t1 = time()
-    new_projection = True #False # True if given new mesh to get projection landmarks.
+    new_projection = args.newProjLM #False # True if given new mesh to get projection landmarks.
     if len(glob(projLM_file.format('*'))) == 0 or new_projection:
       # IF MESH TOO FINE, THIS CAN BE PROBLEMATIC!
       assam.projLM, assam.projLM_ID = assam.getProjectionLandmarks(faces, 
