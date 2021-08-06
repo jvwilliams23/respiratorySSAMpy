@@ -5,3 +5,7 @@
 *.tgz
 *.tar*
 __pycache__/
+run*.cmd
+*.o1*
+*.po1*
+log*
