@@ -6,44 +6,30 @@
 '''
 
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
-import random
 import vtk
 import nevergrad as ng
 import vedo as v
 import networkx as nx 
 
-from scipy.spatial.distance import cdist, pdist
-from scipy.spatial.transform import Rotation
-from scipy import interpolate
+from scipy.spatial.distance import cdist
 
-# from vtkplotter import *
-from pylab import cross,dot,inv
 import argparse
+from distutils.util import strtobool
 from re import findall
 from copy import copy
-from sys import exit, argv
+from sys import exit
 from glob import glob
 from datetime import date
 
-from sklearn.model_selection import train_test_split, \
-                  LeaveOneOut,\
-                  KFold
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
 #plot graphs for compactness, specificity etc
 # from ssmPlot import *
 import userUtils as utils
-from trimesh.intersections import mesh_plane
 from morphAirwayTemplateMesh import MorphAirwayTemplateMesh
-
-def graphToCoords(graph, graphnodes):
-  coords = []
-  for node in graphnodes:
-    coords.append(graph.nodes[node]["pos"])
-  return coords
 
 class RespiratorySSM:
 
@@ -186,6 +172,7 @@ class RespiratorySSM:
       b = np.dot((s_i.reshape(-1) - mean_tr), phi_tr.T)/self.std #-actually b * std, not b
       s_i_k = self.getx_allModes(mean_tr, phi_tr[:k], b[:k]*self.std[:k])
       r_k_i = np.sum(abs(s_i_k - s_i))/len(s_i) # reconstruction error for instance i
+      r_k_i = np.sum(utils.euclideanDist(s_i_k, s_i))/len(s_i) # reconstruction error for instance i
 
       if debug:
         print("r_k")
@@ -222,7 +209,8 @@ class RespiratorySSM:
       b = np.dot((s_i.reshape(-1) - mean_tr), phi_tr.T)/self.std #-actually b * std, not b
       s_i_k = self.getx_allModes(mean_tr, phi_tr[:k], b[:k]*self.std[:k])
 
-      g_k_i = np.sum(abs(s_i_k - s_i))/len(s_i) # reconstruction error for instance i
+      g_k_i = np.sum(abs(s_i_k - s_i))/len(s_i) # generalisation error for instance i
+      g_k_i = np.sum(utils.euclideanDist(s_i_k, s_i))/len(s_i) # generalisation error for instance i
 
       if debug:
         print("r_k")
@@ -244,8 +232,8 @@ class RespiratorySSM:
       g_k += g_k_i
 
     # print("r_k is ", r_k, "\n n is",n)
-    g_k /= (n + 1)
     # print("Reconstruction error is", r_k, r_k/max(mean_tr)*100.,"%" )
+    g_k /= (n + 1)
 
     return g_k#/max(mean_tr)*100.
 
@@ -372,6 +360,11 @@ def getInputs():
                       type=bool, 
                       help='write mean point cloud from all landmarkFiles'
                       )
+  parser.add_argument('--normalise', 
+                      default=str(False), 
+                      type=strtobool, 
+                      help='normalise landmarks before training model'
+                      )
   parser.add_argument('--debug', 
                       default=False, 
                       type=str, 
@@ -379,171 +372,7 @@ def getInputs():
                           'plotting outputs'
                       )
 
-  args = parser.parse_args()
-  landmarkDir = args.inp
-  debugMode = args.debug 
-  getMetrics = args.getMetrics
-  getModes = args.getModes
-  writeMean = args.writeMean
-
-  return landmarkDir, debugMode, getMetrics, getModes, writeMean
-
-def getLandmarksOnGraph(landmarks, bgraph):
-  '''
-  Find graph node closest to each landmark.
-  params:
-  landmarks (np.ndarray N,3): xyz coordinates of landmarks for each sample
-  bgraph (networkx DiGraph): directed graph of airway branch points
-  returns:
-  np.array of graph node IDs matching each landmark
-  '''
-  pos = []
-  for node in bgraph.nodes:
-    pos.append(bgraph.nodes[node]['pos'])
-  pos = np.vstack(pos)
-
-  # set landmarks not exactly on branch to nearest branch
-  for i, lm in enumerate(landmarks):
-    landmarks[i] = pos[np.argmin(utils.euclideanDist(pos,lm))]
-
-  dist = cdist(pos, landmarks)
-  loc = np.argmin(dist, axis=0)
-
-  graphID = np.array(bgraph.nodes)[loc]
-  e = np.array(bgraph.edges)
-  n = 1 # for finding nth smallest value
-  # if not all nodes are fully connected, find a nearby node that is
-  while np.isin(e,graphID).all(axis=1).sum()!=graphID.size-1:
-    n += 1
-    # find landmark corresponding to fully connected graph node
-    # as node will appear in only one edge with another landmark
-    brokenID = np.argwhere(np.isin(graphID,
-                                    e[np.argwhere(np.isin(e,graphID).sum(axis=1)>=2)]
-                                   )==False)
-    if len(brokenID)!=0:
-      brokenID = brokenID[0]
-    else:
-      print('probably there is a spurious branch that needs pruned')
-      break
-    # convert to df so we can use 'nsmallest func'
-    tmpdf = pd.DataFrame(utils.euclideanDist(pos, landmarks[brokenID]))
-    loc[brokenID] = tmpdf.nsmallest(n,0).index[-1] #nth smallest distance
-    graphID = np.array(bgraph.nodes)[loc]
-  return graphID, landmarks
-
-def getIntermediateNodes(lgraph, vgraph, landmarks, nTot=10):
-  '''
-  Get midpoints of a branch by fitting a cubic spline to the coordinates
-  along the branch. 
-  The spline is then sub-divided to get desired number of midpoints.
-  params:
-  lgraph (nx.DiGraph): Skeleton filtered only to landmarked nodes 
-                        (first few bifurcations).
-  vgraph (nx.DiGraph): Skeleton with coordinates from all voxels along branch.
-  landmarks (np.ndarray, N,3): corresponding landmarks for each sample
-  nTot (int, optional): number of midpoints along branch to extract
-  returns:
-  landmarks: array with new interpolated points inserted at distal node index+1
-  lgraph: new landmark graph which includes midpoints. 
-  '''
-  lgraph0 = lgraph.copy()
-  for edge in lgraph0.edges:
-    # if edge1 is above edge 0 (in hierarchy), then edge1 is proximal one 
-    if edge[1] in nx.ancestors(vgraph, edge[0]):
-      proximalNode, distalNode = edge[::-1]
-      # closest point in landmark list to current node in graph
-      proximalLM = np.argmin(utils.euclideanDist(landmarks, 
-                                                 lgraph0.nodes[edge[1]]['pos']))
-      distalLM = np.argmin(utils.euclideanDist(landmarks, 
-                                                 lgraph0.nodes[edge[0]]['pos']))
-    else:
-      proximalNode, distalNode = edge
-      proximalLM = np.argmin(utils.euclideanDist(landmarks, 
-                                                 lgraph0.nodes[edge[0]]['pos']))
-      distalLM = np.argmin(utils.euclideanDist(landmarks, 
-                                                 lgraph0.nodes[edge[1]]['pos']))
-    # get nodes in voxel graph along path between landmarks
-    e_path = list(nx.all_simple_paths(vgraph, proximalNode, distalNode) )[0]
-    spline = False
-    spline = True
-    if spline:
-      # save points along edge path to create a spline
-      spline_pts = []
-      spline_d = []
-      spline_norm = []
-      for e in e_path:
-        spline_pts.append(vgraph.nodes[e]['pos'])
-        spline_d.append(vgraph.nodes[e]['diameter'])
-        spline_norm.append(vgraph.nodes[e]['norm'])
-      spline_pts = np.vstack(spline_pts)
-      spline_d = np.array(spline_d)
-      spline_norm = np.vstack(spline_norm)
-      # prep data for spline
-      x,y,z = spline_pts[:,0], spline_pts[:,1], spline_pts[:,2]
-      xn,yn,zn = spline_norm[:,0], spline_norm[:,1], spline_norm[:,2]
-      # get all info about the interpolated splines
-      # smooth edge only spline by 100, diameter and normal need extra smoothing
-      spl_xticks, _ = interpolate.splprep([x,y,z], 
-                                              k=3, s=100.0)
-      spl_fullticks, _ = interpolate.splprep([x,y,z,spline_d,xn,yn,zn], 
-                                              k=3, s=1000.0)
-      # generate the new interpolated dataset. sample spline to 100 points
-      e_path = interpolate.splev(np.linspace(0,1,100), spl_xticks, der=0)
-      e_path = np.vstack(e_path).T
-      full_path = interpolate.splev(np.linspace(0,1,100), spl_fullticks, der=0)
-      full_path = np.vstack(full_path).T
-      # vp += v.Points(full_path[:,[0,1,2]],r=4)
-      # for f in full_path:
-      #   x = f[[0,1,2]] # coords of each point on spline
-      #   d = (f[3]**2)**0.5 # diameter at each point
-      #   xn = f[[-3,-2,-1]] # normal at each spline point
-      #   vp += v.Cylinder(x, r=d/2, axis=xn).alpha(0.2)
-      # chunk size to split tree segment. 
-      # Miss first nSkip points to avoid clustering at branches
-      nSkip = 5
-      chunks = np.linspace(nSkip, len(full_path)-nSkip, nTot) 
-    else:
-      chunks = np.linspace(0, len(e_path)-1, nTot) # chunk size to split tree segment
-    inter_pts = []
-    diameter = []
-    norm = []
-    for c in chunks:
-      if spline:
-        pt_n = full_path[int(round(c))] #nth point on spline
-        # if using a spline, find the closest nth point on spline
-        inter_pts.append(e_path[int(round(c))])
-        diameter.append(pt_n[3])
-        norm.append(pt_n[[[-3,-2,-1]]])
-      else:
-        # if using a graph nodes, find the closest nth node and get its position
-        ind = e_path[int(round(c))]
-        inter_pts.append(vgraph.nodes[ind]['pos'])
-        norm.append(vgraph.nodes[ind]['norm'])
-        diameter.append(vgraph.nodes[ind]['diameter'])
-    inter_pts = np.vstack(inter_pts) # reformat data from list
-    # add new landmark under the distal LM in the landmark array
-    landmarks = np.insert(landmarks,distalLM+1,inter_pts,axis=0)
-    # add new midpoint nodes to graph
-    lgraph.remove_edge(edge[0],edge[1])
-    newInd = max(lgraph.nodes)+1
-    for i, pt in enumerate(inter_pts):
-      lgraph.add_node(newInd+i)
-      # add metadata to graph
-      lgraph.nodes[newInd+i]['pos'] = pt
-      lgraph.nodes[newInd+i]['norm'] = norm[i]
-      lgraph.nodes[newInd+i]['diameter'] = diameter[i]
-    lgraph.add_edge(proximalNode, newInd)
-    # connect sub points (num edges = num points - 1)
-    for i in range(1,nTot):
-      lgraph.add_edge(newInd+i-1, newInd+i)
-    lgraph.add_edge(newInd+inter_pts.shape[0]-1, distalNode)
-  return landmarks, lgraph
-
-def filterGraphToLMs(graph, lmID):
-  lgraph = graph.copy()#.to_undirected()
-  nonLandmarked = np.setdiff1d(list(lgraph.nodes), lmID)
-  lgraph.remove_nodes_from(nonLandmarked)
-  return lgraph
+  return parser.parse_args()
 
 labels = ['topTrachea','endTrachea', 'endRMB', 'endLMB', 
           'triEndBronInt', 'triRUL', 'triLUL', 'llb6']
@@ -551,8 +380,17 @@ labels = ['topTrachea','endTrachea', 'endRMB', 'endLMB',
 if __name__ == "__main__":
   print(__doc__)
 
-  landmarkDir, debug, getMetrics, getModes, writeMean = getInputs()
+  args = getInputs()
+
+  landmarkDir = args.inp
+  debug = args.debug 
+  getMetrics = args.getMetrics
+  getModes = args.getModes
+  writeMean = args.writeMean
+  normalise = args.normalise
+  # landmarkDir, debug, getMetrics, getModes, writeMean, normalise = getInputs()
   num_intermediatePts = 15 #25
+  # normalise = False
 
   trainSplit = 0.99
 
@@ -600,7 +438,7 @@ if __name__ == "__main__":
   
   #initialise shape model
   diameter = np.ones(nodalCoords.shape[:-1])
-  ssm = RespiratorySSM(nodalCoords, train_size=trainSplit)
+  ssm = RespiratorySSM(nodalCoords, train_size=trainSplit, normalise=normalise)
   xBar = ssm.computeMean(ssm.x_scale_tr)
   xBar_n3 = xBar.reshape(-1,ssm.shape)
   dBar = xBar_n3[:,-1]
@@ -772,7 +610,7 @@ if __name__ == "__main__":
 
     trainSplit = 0.95
     ntrain = int(len(nodalCoords)*trainSplit)-1#[len(nodalCoords)-2, 35-2]
-    N = 30#2#30#5 # number of re-training loops to get statistics
+    N = 10#2#30#5 # number of re-training loops to get statistics
     compac = np.zeros(shape=(ntrain+1, (N)))
     reconErr = np.zeros(shape=(ntrain, N))
     genErr = np.zeros(shape=(ntrain, N))
@@ -780,7 +618,8 @@ if __name__ == "__main__":
 
     # loop first to get cumulative variance statistics ('compactness')
     for i in range(N):
-      ssm = RespiratorySSM(nodalCoords, train_size=trainSplit, quiet=True)
+      ssm = RespiratorySSM(nodalCoords, train_size=trainSplit, 
+                            quiet=True, normalise=normalise)
       xBar = ssm.computeMean(ssm.x_scale_tr)
       compac[:,i] =  np.cumsum(ssm.pca.explained_variance_ratio_)
     
@@ -788,7 +627,8 @@ if __name__ == "__main__":
     for k in np.arange(1,ntrain+1):
       print("modes =", k)
       for i in range(N):
-        ssm = RespiratorySSM(nodalCoords, train_size=trainSplit, quiet=True)
+        ssm = RespiratorySSM(nodalCoords, train_size=trainSplit, 
+                             quiet=True, normalise=normalise)
         xBar = ssm.computeMean(ssm.x_scale_tr)
 
         genErr[k-1,i] = ssm.testGeneralisation(ssm.x_scale_te, 
@@ -802,7 +642,8 @@ if __name__ == "__main__":
                                                   k, 
                                                   ssm.pca)
 
-      ssm = RespiratorySSM(nodalCoords, train_size=trainSplit, quiet=True)
+      ssm = RespiratorySSM(nodalCoords, train_size=trainSplit, 
+                           quiet=True, normalise=normalise)
       xBar = ssm.computeMean(ssm.x_scale_tr)
       
       specErr[k-1,:] = np.array(
