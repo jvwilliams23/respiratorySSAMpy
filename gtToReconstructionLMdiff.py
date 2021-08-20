@@ -13,6 +13,23 @@ import networkx as nx
 from sys import exit
 from distutils.util import strtobool
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--caseID', '-c',
+                    default='8684', 
+                    type=str,#, required=True,
+                    help='training data case'
+                    )
+parser.add_argument('--filename', '-f',
+                    default='reconstruction_case', 
+                    type=str,#, required=True,
+                    help='string for filename [default is reconstruction_case]'
+                    )
+parser.add_argument('--visualise', '-v',
+                    default=str(False), 
+                    type=strtobool,#, required=True,
+                    help='visualise error'
+                    )
+args = parser.parse_args()
 
 def getBranchLength(lgraph, vgraph, landmarks, nTot=10):
   '''
@@ -113,41 +130,25 @@ def getBranchAngle(graph):
                                                                   node)
   return graph
 
-parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--case', '-c',
-                    default='8684', 
-                    type=str,#, required=True,
-                    help='training data case'
-                    )
-parser.add_argument('--visualise', '-v',
-                    default=str(False), 
-                    type=strtobool,#, required=True,
-                    help='visualise error'
-                    )
-args = parser.parse_args()
-caseID = args.case
-
-
-# caseID = '3948'
-
 lm_index_file = 'allLandmarks/landmarkIndexAirway.txt'
 airway_lm_index = np.loadtxt(lm_index_file).astype(int)
-out_dir = 'outputLandmarks/reconstruction_case{}_{}.csv'
+out_dir = 'outputLandmarks/{filename}{caseID}_{key}.csv'
+# out_dir = 'outputLandmarks/reconstruction_case{}_{}.csv'
 gt_dir = 'allLandmarks/allLandmarks{}.csv'
 gt_mesh_dir = "/home/josh/project/imaging/airwaySSAMpy/segmentations/airwaysForRadiologistWSurf/{}/*.stl" 
 
-out_lm = np.loadtxt(out_dir.format(caseID, 'ALL'), 
+out_lm = np.loadtxt(out_dir.format(filename=args.filename, caseID=args.caseID, key='ALL'), 
                     delimiter=',', skiprows=1)[airway_lm_index]
-gt_lm = np.loadtxt(gt_dir.format(caseID), 
+gt_lm = np.loadtxt(gt_dir.format(args.caseID), 
                     delimiter=',', skiprows=1)[airway_lm_index]
 
 # center landmarks
 out_lm -= out_lm.mean(axis=0)
-offset_file = 'landmarks/manual-jw/landmarks{}.csv'.format(caseID)
+offset_file = 'landmarks/manual-jw/landmarks{}.csv'.format(args.caseID)
 carina = np.loadtxt(offset_file, skiprows=1, delimiter=',', usecols=[1,2,3])[1]
 gt_offset =  carina + gt_lm.mean(axis=0)
 gt_lm -= gt_lm.mean(axis=0)
-gt_mesh = v.load(glob(gt_mesh_dir.format(caseID))[0]).pos(-gt_offset)
+gt_mesh = v.load(glob(gt_mesh_dir.format(args.caseID))[0]).pos(-gt_offset)
 # gt_mesh.alignTo(v.Points(gt_lm), rigid=True)
 
 dist = utils.euclideanDist(out_lm, gt_lm)
@@ -243,7 +244,7 @@ for edge in out_graph_w_lengths.edges:
   length_diff_list.append(diff)
   length_diff_percent_list.append(diff_pct)
   gen_list.append(out_graph_w_lengths.edges[edge]['generation'])
-np.savetxt("morphologicalAnalysis/lengthStats{}.txt".format(caseID),
+np.savetxt("morphologicalAnalysis/lengthStats{}.txt".format(args.caseID),
           np.c_[gen_list, length_gt_list, length_out_list, 
                 length_diff_list, length_diff_percent_list],
           header="bifurcation level\tground truth\treconstruction\tdifference [mm]\tdifference [%]",
@@ -268,7 +269,7 @@ for edge in out_graph_w_lengths.edges:
   diameter_diff_list.append(diff)
   diameter_diff_percent_list.append(diff_pct)
   gen_list.append(gt_graph_w_diameter.edges[edge]['generation'])
-np.savetxt("morphologicalAnalysis/diameterStats{}.txt".format(caseID),
+np.savetxt("morphologicalAnalysis/diameterStats{}.txt".format(args.caseID),
           np.c_[gen_list, diameter_gt_list, diameter_out_list, 
                 diameter_diff_list, diameter_diff_percent_list],
           header="bifurcation level\tground truth\treconstruction\tdifference [mm]\tdifference [%]",
@@ -299,7 +300,7 @@ for node in out_branch_graph.nodes:
     angle_diff_list.append(diff)
     angle_diff_percent_list.append(diff_pct)
     gen_list.append(out_branch_graph.nodes[node]['generation'])
-np.savetxt("morphologicalAnalysis/angleStats{}.txt".format(caseID),
+np.savetxt("morphologicalAnalysis/angleStats{}.txt".format(args.caseID),
           np.c_[gen_list, angle_gt_list, angle_out_list, angle_diff_list, angle_diff_percent_list],
           header="bifurcation level\tground truth\treconstruction\tdifference [degrees]\tdifference [%]",
           fmt="%4f")
