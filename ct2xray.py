@@ -12,6 +12,7 @@ from pydicom.dicomdir import DicomDir
 from pydicom.data import get_testdata_files
 import matplotlib.pyplot as plt
 # from myshow import myshow
+from copy import copy
 from skimage.measure import label
 
 import SimpleITK as sitk
@@ -64,8 +65,12 @@ class ConvertCT2XRay:
 
   def __init__(self, ct_3d, spacing):
 
+    # initialise X-ray setup
     source, destination_board = self.configureRayTracing(ct_3d)
+    # convert CT to X-ray
     self.xray_2D = self.ct2xray(source, destination_board, ct_3d)
+    # clean up any blank rows
+    self.xray_2D = self.cleanBlankRows(np.array(self.xray_2D))
 
   def ct2xray(self, xray_source, dest_board, ct_3d):
     '''
@@ -131,6 +136,75 @@ class ConvertCT2XRay:
 
     return out_scan
 
+  def cleanBlankRows(self, img):
+    '''
+    check to see if any rows in image have all the same value (blank line).
+    this is caused by some error but I am unsure what, so it is easier to fix
+    in post-processing
+    '''
+    # save input image for overwriting. 
+    # Should prevent error if a row and col are both blank
+    img_def = copy(img)
+
+    print('cleaning')
+    # check if first row is blank
+    if np.all(img_def[0,:]==img_def[0,0]):
+      print('first row is blank')
+      # loop over rows to find one that is not blank
+      for row_index in range(1,img_def.shape[0]):
+        row = img_def[row_index,:]
+        if not np.all(row==row[0]):
+          # save location of non-blank 'correct' row
+          row_index_correct = row_index
+          break
+      # overwrite blank rows with correct one
+      for row_index in range(0, row_index_correct):
+        img[row_index, :] = row
+
+    # check if last row is blank
+    if np.all(img_def[-1,:]==img_def[-1,-1]):
+      print('last row is blank')
+      # loop over rows to find one that is not blank
+      for row_index in np.arange(0, img_def.shape[0])[::-1]:
+        row = img_def[row_index,:]
+        if not np.all(row==row[0]):
+          # save location of non-blank 'correct' rows
+          row_index_correct = row_index
+          break
+      # overwrite blank rows with correct one
+      for row_index in range(row_index_correct, img_def.shape[0]):
+        img[row_index, :] = row
+
+    # check if first column is 'blank'
+    if np.all(img_def[:,0]==img_def[0,0]):
+      print('first column is blank')
+      # loop over columns to find one that is not blank
+      for col_index in range(1,img_def.shape[1]):
+        col = img_def[:,col_index]
+        if not np.all(col==col[0]):
+          # save location of non-blank 'correct' column
+          col_index_correct = col_index
+          break
+      # overwrite blank columns with correct one
+      for col_index in range(0, col_index_correct):
+        img[:,col_index] = col
+
+    # check if last column is 'blank'
+    if np.all(img_def[:,-1]==img_def[-1,-1]):
+      print('last column is blank')
+      # loop over columns to find one that is not blank
+      for col_index in np.arange(0, img_def.shape[1])[::-1]:
+        col = img_def[:,col_index]
+        if not np.all(col==col[-1]):
+          # save location of non-blank 'correct' column
+          col_index_correct = col_index
+          break
+      # overwrite blank columns with correct one
+      for col_index in np.arange(col_index_correct, img_def.shape[1]):
+        img[:,col_index] = col
+
+    return img
+
   def configureRayTracing(self, ct):
     '''
     declare source and board points based on CT data size
@@ -145,7 +219,8 @@ class ConvertCT2XRay:
                              coordinate as class object i.e. source.x is x coordinate
     board (list of point3D object): corner coordinates of X-ray board
     '''
-    source = Point3D(256, 162, 50)
+    # source = Point3D(256, 162, 50)
+    source = Point3D(250, 250, 50)
     board = [Point3D(0, ct[0].shape[1], len(ct)), 
              Point3D(ct[0].shape[0], ct[0].shape[1], len(ct)),
              Point3D(0, ct[0].shape[1], 0), 
@@ -161,21 +236,21 @@ def save_image(data, filename):
   ax.set_axis_off()
   fig.add_axes(ax)
   ax.imshow(data, cmap=plt.cm.bone)
-  plt.savefig(filename, dpi=500)#plt.cm.bone) 
+  plt.savefig(filename, dpi=500)
   plt.close()
   return None
 
-# def show_image(data):
-#   # debugging only
-#     sizes = np.shape(data)     
-#     fig = plt.figure()
-#     fig.set_size_inches(1. * sizes[0] / sizes[1], 1, forward = False)
-#     ax = plt.Axes(fig, [0., 0., 1., 1.])
-#     ax.set_axis_off()
-#     fig.add_axes(ax)
-#     ax.imshow(data, cmap=plt.cm.bone)
-#     plt.show()
-#     return None
+def show_image(data):
+  # debugging only
+  sizes = np.shape(data)     
+  fig = plt.figure()
+  fig.set_size_inches(1. * sizes[0] / sizes[1], 1, forward = False)
+  ax = plt.Axes(fig, [0., 0., 1., 1.])
+  ax.set_axis_off()
+  fig.add_axes(ax)
+  ax.imshow(data, cmap=plt.cm.bone)
+  plt.show()
+  return None
 
 def truncate(image, min_bound, max_bound):
   '''
@@ -385,6 +460,12 @@ def dcm2ct3D_sitk(ct_dir):
                    )
   # set min value to 0 so image has minimum gray-value 0 (i.e. air is black on png)
   imArr -= imArr.min()
+  # # nda = sitk.GetArrayFromImage(ct)
+  # nda = imArr[::-1,int(imArr.shape[1]//2), :]
+  # # plt.imshow(nda, cmap='gray')
+  # # plt.show()
+  # save_image(nda, 'test.png')
+  # exit()
   print("After resample", image3D.GetSpacing(), image3D.GetSize())
 
   #-flip output otherwise image appears upside-down 
@@ -407,11 +488,15 @@ if __name__ == '__main__':
   ct, spacing = dcm2ct3D_sitk(ctDir)
   convCTxr = ConvertCT2XRay(ct, spacing)
 
+  # convCTxr.xray_2D = convCTxr.cleanBlankRows(convCTxr.xray_2D)
+
   # save image and write metadata file with pixel spacing
-  save_image(convCTxr.xray_2D, writeDir+"./drr-"+tag)
+  save_image(convCTxr.xray_2D, writeDir+"drr-"+tag)
+  # show_image(convCTxr.xray_2D)
+  # exit()
   spacing = np.array(spacing)#/500*512
   if __name__ == "__main__":
-    f = open(writeDir+"./drr-"+tag.replace('.png','.md'), "w")
+    f = open(writeDir+"drr-"+tag.replace('.png','.md'), "w")
     f.write("Voxel spacing is\n")
     f.write(str(spacing[0])+" "+str(spacing[1])+" "+str(spacing[2])+"\n")
     f.close()
