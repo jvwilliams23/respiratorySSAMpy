@@ -48,7 +48,7 @@ template_mesh = "segmentations/template3948/newtemplate3948_mm.stl"
 plotAlignment = False
 
 def getInputs():
-  parser = argparse.ArgumentParser(description='SSM for lung lobe variation')
+  parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument('--inp', '-i',
                       default='allLandmarks/', 
                       type=str, 
@@ -90,7 +90,7 @@ def getInputs():
                       help='anatomical shadow loss coefficient'
                       )
   parser.add_argument('--c_grad', '-cg',
-                      default=0.4, 
+                      default=0.0, 
                       type=float, 
                       help='image gradient loss coefficient'
                       )
@@ -415,7 +415,7 @@ if __name__=='__main__':
       for t in testSet[::-1]:
         #-store test data in different list
         testID.append(patientIDs[t])
-    print(randomise_testing, testID)
+    print('randomising testing')
   else:
     testSet = []
     # assignedTestIDs = ["9484"]
@@ -447,6 +447,9 @@ if __name__=='__main__':
     drrArr = np.delete(drrArr,t,axis=0)
     landmarks = np.delete(landmarks,t,axis=0)
     lmProj = np.delete(lmProj,t,axis=0)
+
+  if randomise_testing: print('test IDs are', testID)
+  assert len(testID) != 0, 'no testID selected'
 
   meanArr = landmarks.mean(axis=0)
 
@@ -749,6 +752,17 @@ if __name__=='__main__':
                       (-3,3)])
 
     t1 = time()
+
+    # assam.projLM_IDAll = []
+    # pointCounter = 0
+    # for key in assam.projLM_ID.keys():
+    #   print("\n{}".format(key))
+    #   if key not in ['Airway', 'RML']:
+    #     assam.projLM_IDAll.extend(assam.projLM_ID[key]+pointCounter)
+    #     # tmp_id = np.arange(0, inputCoords[key].shape[0], 1)
+    #     # assam.projLM_IDAll.extend(tmp_id+pointCounter)
+    #   pointCounter += inputCoords[key].shape[0]
+    # assam.projLM_IDAll = np.array(assam.projLM_IDAll)
 
     if debug:
       plot_pts = surfCoords_mm['Airway'][assam.projLM_ID['Airway']]
