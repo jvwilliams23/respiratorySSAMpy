@@ -169,9 +169,15 @@ class RespiratorySSM:
 
     for n in range(trainData.shape[0]):
       s_i = trainData[n].reshape(-1,3)
+      # normalise = True
+      if normalise:
+        max_dist = 100.
+        max_dist = abs(s_i.max(axis=0) - s_i.min(axis=0)).max()
+        # max_dist = cdist(s_i, s_i).max()
       b = np.dot((s_i.reshape(-1) - mean_tr), phi_tr.T)/self.std #-actually b * std, not b
       s_i_k = self.getx_allModes(mean_tr, phi_tr[:k], b[:k]*self.std[:k])
-      r_k_i = np.sum(abs(s_i_k - s_i))/len(s_i) # reconstruction error for instance i
+
+      # r_k_i = np.sum(abs(s_i_k - s_i))/len(s_i) # reconstruction error for instance i
       r_k_i = np.sum(utils.euclideanDist(s_i_k, s_i))/len(s_i) # reconstruction error for instance i
 
       if debug:
@@ -191,7 +197,10 @@ class RespiratorySSM:
         p2=Points(s_i_k.reshape(-1,3), c="g",r=8)
         show(p,p2)
         exit()
-      r_k += r_k_i
+      if normalise:
+        r_k = r_k_i/max_dist*100.
+      else:
+        r_k += r_k_i
 
     r_k /= (n+1)
 
@@ -206,12 +215,16 @@ class RespiratorySSM:
     g_k = 0 #initialise error
     for n in range(testData.shape[0]):
       s_i = testData[n].reshape(-1,3) #s = shape
+      # normalise = True
+      if normalise:
+        max_dist = 100.
+        # max_dist = cdist(s_i, s_i).max()
+        max_dist = abs(s_i.max(axis=0) - s_i.min(axis=0)).max()
       b = np.dot((s_i.reshape(-1) - mean_tr), phi_tr.T)/self.std #-actually b * std, not b
       s_i_k = self.getx_allModes(mean_tr, phi_tr[:k], b[:k]*self.std[:k])
 
-      g_k_i = np.sum(abs(s_i_k - s_i))/len(s_i) # generalisation error for instance i
+      # g_k_i = np.sum(abs(s_i_k - s_i))/len(s_i) # generalisation error for instance i
       g_k_i = np.sum(utils.euclideanDist(s_i_k, s_i))/len(s_i) # generalisation error for instance i
-
       if debug:
         print("r_k")
         print(r_k.shape)
@@ -229,7 +242,10 @@ class RespiratorySSM:
         p2=Points(s_i_k.reshape(-1,3), c="g",r=8)
         show(p,p2)
         exit()
-      g_k += g_k_i
+      if normalise:
+        g_k = g_k_i/max_dist*100.
+      else:
+        g_k += g_k_i
 
     # print("r_k is ", r_k, "\n n is",n)
     # print("Reconstruction error is", r_k, r_k/max(mean_tr)*100.,"%" )
@@ -610,7 +626,7 @@ if __name__ == "__main__":
 
     trainSplit = 0.95
     ntrain = int(len(nodalCoords)*trainSplit)-1#[len(nodalCoords)-2, 35-2]
-    N = 10#2#30#5 # number of re-training loops to get statistics
+    N = 50 #2#30#5 # number of re-training loops to get statistics
     compac = np.zeros(shape=(ntrain+1, (N)))
     reconErr = np.zeros(shape=(ntrain, N))
     genErr = np.zeros(shape=(ntrain, N))
@@ -621,7 +637,7 @@ if __name__ == "__main__":
       ssm = RespiratorySSM(nodalCoords, train_size=trainSplit, 
                             quiet=True, normalise=normalise)
       xBar = ssm.computeMean(ssm.x_scale_tr)
-      compac[:,i] =  np.cumsum(ssm.pca.explained_variance_ratio_)
+      compac[:,i] =  np.cumsum(ssm.pca.explained_variance_ratio_)*100.
     
     # loop for generalisation, reconstruction and specificity errors
     for k in np.arange(1,ntrain+1):
@@ -654,6 +670,11 @@ if __name__ == "__main__":
                                                     ssm.pca,
                                                     N))
     from ssmPlot import plotSSMmetrics, plotSSMmetrics_three 
+    if normalise:
+      units = '%'
+    else:
+      units = 'mm'
     # plotSSMmetrics(compac, reconErr, genErr, specErr, tag="all")#str(shape))
-    plotSSMmetrics_three(compac, reconErr, genErr, tag="all_noErr")#str(shape))
+    plotSSMmetrics_three(compac, reconErr, genErr, units=units, 
+                         tag="all_noErr_norm")#str(shape))
 
