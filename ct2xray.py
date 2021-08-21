@@ -494,10 +494,9 @@ if __name__ == '__main__':
   save_image(convCTxr.xray_2D, writeDir+"drr-"+tag)
   # show_image(convCTxr.xray_2D)
   # exit()
-  spacing = np.array(spacing)#/500*512
-  if __name__ == "__main__":
-    f = open(writeDir+"drr-"+tag.replace('.png','.md'), "w")
-    f.write("Voxel spacing is\n")
-    f.write(str(spacing[0])+" "+str(spacing[1])+" "+str(spacing[2])+"\n")
-    f.close()
+  spacing = list(spacing)#/500*512
+  f = open(writeDir+"drr-"+tag.replace('.png','.md'), "w")
+  f.write("Voxel spacing is\n")
+  f.write(str(spacing[0])+" "+str(spacing[1])+" "+str(spacing[2])+"\n")
+  f.close()
   # writeDir+"./drr-"+tag+".png", np.array(spacing)
