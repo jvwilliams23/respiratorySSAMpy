@@ -103,10 +103,15 @@ def alignToTargetVedo(coords, target, *args, rigid=True):
         for s, sample in enumerate(out_coords[0]):
           centred_out_coords = (sample - sample.mean(axis=0))[:,[0,2]]
           centred_in_coords = (coords[s] - coords[s].mean(axis=0))[:,[0,2]]
+          # prevent floating point error when sample, s, is the target sample
+          if np.allclose(sample, coords[s]):
+            new_img.append(alt_coords[s])
+            continue
           norm_out_vec = centred_out_coords / np.sqrt(np.sum(centred_out_coords**2, axis=1))[:,np.newaxis]
           norm_in_vec = centred_in_coords / np.sqrt(np.sum(centred_in_coords**2, axis=1))[:,np.newaxis]
           dot_prod = np.sum(norm_in_vec*norm_out_vec, axis=1)
           angle = np.arccos(dot_prod)*180/np.pi
+          print(angle)
           new_img.append(rotate(alt_coords[s], angle.mean()))
         out_coords.append(new_img)
       else:
