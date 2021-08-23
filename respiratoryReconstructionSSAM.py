@@ -167,8 +167,8 @@ class RespiratoryReconstructSSAM:
 
     prior = []
     #-copy mean shape before shape is adjusted
-    meanShape = copy(self.shape)['ALL']
-    meanAirway = copy(self.shape)['Airway']
+    meanShape = copy(self.shape['ALL'])
+    meanAirway = copy(self.shape['Airway'])
     #-call test parameters from optimizer
     self.b = copy(b)
     
@@ -261,6 +261,7 @@ class RespiratoryReconstructSSAM:
 
     if self.optIter % 500 == 0 and not self.quiet:
       self.overlayAirwayOnXR(self.img, all_morphed, scale, pose)
+      # exit()
     # if np.isnan(E):
     #   return 2
     # else:
@@ -388,19 +389,19 @@ class RespiratoryReconstructSSAM:
     energy = np.array(energy)
     silhouette_pts = np.delete(silhouette_pts, delInd, axis=0)
 
-    if self.optIter % 500 == 0 and not self.quiet:
-      plt.close()
-      # for debugging anatomical shadow values
-      fig, ax = plt.subplots()
-      ax.imshow(img, cmap='gray', extent=extent)
-      scatter = ax.scatter(silhouette_pts[:,0], silhouette_pts[:,1], 
-                            c=energy, s=2)
-      plt.colorbar(scatter)
-      plt.savefig('images/reconstruction/debug/iter{}shadow.png'.format(self.optIter))
-    '''
-    # plt.show()
-    # exit()
-    '''
+    # if self.optIter % 500 == 0 and not self.quiet:
+    #   plt.close()
+    #   # for debugging anatomical shadow values
+    #   fig, ax = plt.subplots()
+    #   ax.imshow(img, cmap='gray', extent=extent)
+    #   scatter = ax.scatter(silhouette_pts[:,0], silhouette_pts[:,1], 
+    #                         c=energy, s=2)
+    #   plt.colorbar(scatter)
+    #   plt.savefig('images/reconstruction/debug/iter{}shadow.png'.format(self.optIter))
+    # '''
+    # # plt.show()
+    # # exit()
+    # '''
 
     # print(energy)
     # account for empty arrays when all points are outside of the domain
@@ -424,7 +425,7 @@ class RespiratoryReconstructSSAM:
     '''
     shape = shape - alignTerm
     shape = shape * scale
-    return shape+alignTerm
+    return shape + alignTerm
 
   def stackShapeAndDensity(self, shape, density):
     '''
@@ -672,13 +673,40 @@ class RespiratoryReconstructSSAM:
               self.img.shape[0]/2.*self.spacing_xr[2] ]
     plt.close()
     plt.imshow(img, cmap='gray', extent=extent)
-    plt.scatter(coords[:,0], coords[:,2],s=2,c='black')
-    plt.text(self.imgCoords[:,0].min()*0.9,self.imgCoords[:,1].max()*0.9, 
-             "pos {}, scale{}".format(str(pos), str(scale)))
+    plt.scatter(self.xRay[:,0], self.xRay[:,1], s=4, c='black')#, alpha=0.2)
+    # plt.scatter(coords[self.projLM_IDAll,0], 
+    #             coords[self.projLM_IDAll,2], 
+    #             s=2, c='yellow')
+    for key in self.projLM_ID.keys():
+      # if key == 'RML':
+      #   continue
+      # else:
+      projLM_key = self.projLM_ID[key]
+      print(key, projLM_key)
+      plt.scatter(coords[self.lmOrder[key]][projLM_key,0], 
+                  coords[self.lmOrder[key]][projLM_key,2], 
+                  s=10, c='pink')
+
+    # plt.text(self.imgCoords[:,0].min()*0.9,self.imgCoords[:,1].max()*0.9, 
+    #          "pos {}, scale{}".format(str(pos), str(scale)))
+    # plt.savefig(
+    #         'images/reconstruction/debug/iter{}{}.png'.format(str(self.optIter),
+    #                                                           tag)
+    #             )
+    # formatting to remove whitespace!
+    plt.gca().set_axis_off()
+    plt.subplots_adjust(top = 1, bottom = 0, right = 1, left = 0, 
+                hspace = 0, wspace = 0)
+    plt.margins(0,0)
+    plt.gca().xaxis.set_major_locator(plt.NullLocator())
+    plt.gca().yaxis.set_major_locator(plt.NullLocator())
     plt.savefig(
             'images/reconstruction/debug/iter{}{}.png'.format(str(self.optIter),
-                                                              tag)
+                                                              tag), 
+            bbox_inches = 'tight',
+            pad_inches = 0
                 )
+    # exit()
     return None
 
   def getProjectionLandmarks(self, faceIDs, faceNorms, points):
