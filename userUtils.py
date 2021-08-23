@@ -40,6 +40,82 @@ def advance_tCounter(t_c, s, neighbors):
     
     return t_c
 
+def alignProcrustesVedo(coords, *args, rigid=True):
+    '''
+    Use vedo implementation of GPA to remove rotation and translation from dataset
+
+    Args:
+    coords np.ndarray (Nsample, Nlms, 3): landmarks in dataset
+    *args np.ndarray: alternate coordinates to align with same transform
+    Returns:
+    Aligned coordinates
+    '''
+    coords_vedo = [v.Points(n) for n in coords]
+    procrustes = v.procrustesAlignment(coords_vedo, rigid=rigid)
+    print(procrustes.info)
+    trans = procrustes.transform
+    out_coords = [np.array([n.applyTransform(trans).points() 
+                            for n in coords_vedo])]
+    for alt_coords in args:
+        alt_coords_vedo = [v.Points(n) for n in alt_coords]
+        out_coords.append(np.array([n.applyTransform(trans).points() 
+                                    for n in alt_coords_vedo]))
+    return out_coords
+    # return np.array([n.applyTransform(trans).points() for n in coords_vedo])
+
+def alignToTargetVedo(coords, target, *args, rigid=True):
+    '''
+    Use vedo implementation of GPA to remove rotation and translation from dataset
+
+    Args:
+    coords np.ndarray (Nsample, Nlms, 3): landmarks in dataset
+    *args np.ndarray: alternate coordinates to align with same transform
+    Returns:
+    Aligned coordinates
+    '''
+    from skimage.transform import rotate
+    from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
+    coords_vedo = [v.Points(n) for n in coords]
+    # procrustes = v.procrustesAlignment(coords_vedo, rigid=rigid)
+    # print(procrustes.info)
+    target_vedo = v.Points(target)
+    trans = [coords_vedo_i.alignTo(target_vedo, rigid=rigid).transform
+                   for coords_vedo_i in coords_vedo]
+    # trans = procrustes.transform
+    # out_coords = [coords_vedo_i.alignTo(target_vedo, rigid=rigid).points()
+    #                for coords_vedo_i in coords_vedo]
+    out_coords = []
+    out_coords.append(np.array([coords_vedo_i.applyTransform(trans[i]).points() 
+                            for i, coords_vedo_i in enumerate(coords_vedo)]))
+    # print(np.array(out_coords), np.array(out_coords).shape)
+    for a, alt_coords in enumerate(args):
+      # different transform for coordinate data
+      if alt_coords[0].shape[1] in [2,3]:
+        alt_coords_vedo = [v.Points(n) for n in alt_coords]
+        out_coords.append([n.applyTransform(trans[i]).points() 
+                                    for i, alt_coords_vedo_i 
+                                    in enumerate(alt_coords_vedo)])
+      elif alt_coords[0].shape[1] == alt_coords[0].shape[0]:
+        print('aligning image')
+        new_img = []
+        for s, sample in enumerate(out_coords[0]):
+          centred_out_coords = (sample - sample.mean(axis=0))[:,[0,2]]
+          centred_in_coords = (coords[s] - coords[s].mean(axis=0))[:,[0,2]]
+          norm_out_vec = centred_out_coords / np.sqrt(np.sum(centred_out_coords**2, axis=1))[:,np.newaxis]
+          norm_in_vec = centred_in_coords / np.sqrt(np.sum(centred_in_coords**2, axis=1))[:,np.newaxis]
+          dot_prod = np.sum(norm_in_vec*norm_out_vec, axis=1)
+          angle = np.arccos(dot_prod)*180/np.pi
+          new_img.append(rotate(alt_coords[s], angle.mean()))
+          # exit()
+        out_coords.append(new_img)
+      else:
+          print('unexpected shape for arg', a, 'shape is', alt_coords[0].shape)
+    print(len(out_coords))
+    return out_coords
+    # return np.array([n.applyTransform(trans).points() for n in coords_vedo])
+
+
+
 def alignToMean(pointCloud):
     '''
         Align a surface point-cloud to its mean
@@ -345,19 +421,6 @@ def plotLoss(lossList, scale="linear", wdir="./", stage=""):
     ax.set_xlabel("Iteration")
     plt.savefig(wdir+"loss"+stage+".pdf")
     return None
-
-def procrustesAlignVedo(coords, rigid=True):
-    '''
-    Use vedo implementation of GPA to remove rotation and translation from dataset
-
-    Args:
-    coords np.ndarray (Nsample, Nlms, 3): landmarks in dataset
-    Returns:
-    Aligned coordinates
-    '''
-    coords_vedo = [v.Points(n) for n in coords]
-    trans = v.procrustesAlignment(coords_vedo, rigid=rigid).transform
-    return np.array([n.applyTransform(trans).points() for n in coords_vedo])
 
 def saveHistogram(distances, fileLabel=""):
     import matplotlib.pyplot as plt
