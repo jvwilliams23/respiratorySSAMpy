@@ -13,6 +13,7 @@ from skimage import filters
 from skimage.filters.rank import mean_bilateral
 from skimage.filters import rank
 from skimage.morphology import ball, disk
+from skimage.transform import rotate
 import networkx as nx
 from copy import copy
 
@@ -73,8 +74,6 @@ def alignToTargetVedo(coords, target, *args, rigid=True):
     Returns:
     Aligned coordinates
     '''
-    from skimage.transform import rotate
-    from vtk.util.numpy_support import numpy_to_vtk, vtk_to_numpy
     coords_vedo = [v.Points(n) for n in coords]
     # procrustes = v.procrustesAlignment(coords_vedo, rigid=rigid)
     # print(procrustes.info)
@@ -91,13 +90,16 @@ def alignToTargetVedo(coords, target, *args, rigid=True):
     for a, alt_coords in enumerate(args):
       # different transform for coordinate data
       if alt_coords[0].shape[1] in [2,3]:
+        # convert coordinates from *args to new space
         alt_coords_vedo = [v.Points(n) for n in alt_coords]
-        out_coords.append([n.applyTransform(trans[i]).points() 
+        alt_coords_vedo_i = [alt_coords_vedo_i.applyTransform(trans[i]).points() 
                                     for i, alt_coords_vedo_i 
-                                    in enumerate(alt_coords_vedo)])
+                                    in enumerate(alt_coords_vedo)]
+        out_coords.append(np.array(alt_coords_vedo_i))
       elif alt_coords[0].shape[1] == alt_coords[0].shape[0]:
         print('aligning image')
         new_img = []
+        # rotate all images by angle from arccos(dot(vec_old, vec_new))
         for s, sample in enumerate(out_coords[0]):
           centred_out_coords = (sample - sample.mean(axis=0))[:,[0,2]]
           centred_in_coords = (coords[s] - coords[s].mean(axis=0))[:,[0,2]]
@@ -106,11 +108,10 @@ def alignToTargetVedo(coords, target, *args, rigid=True):
           dot_prod = np.sum(norm_in_vec*norm_out_vec, axis=1)
           angle = np.arccos(dot_prod)*180/np.pi
           new_img.append(rotate(alt_coords[s], angle.mean()))
-          # exit()
         out_coords.append(new_img)
       else:
           print('unexpected shape for arg', a, 'shape is', alt_coords[0].shape)
-    print(len(out_coords))
+          exit()
     return out_coords
     # return np.array([n.applyTransform(trans).points() for n in coords_vedo])
 
