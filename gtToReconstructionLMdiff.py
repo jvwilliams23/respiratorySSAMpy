@@ -29,6 +29,11 @@ parser.add_argument('--visualise', '-v',
                     type=strtobool,#, required=True,
                     help='visualise error'
                     )
+parser.add_argument('--write', '-w',
+                    default=str(True), 
+                    type=strtobool,#, required=True,
+                    help='write errors to text files'
+                    )
 args = parser.parse_args()
 
 def getBranchLength(lgraph, vgraph, landmarks, nTot=10):
@@ -244,11 +249,12 @@ for edge in out_graph_w_lengths.edges:
   length_diff_list.append(diff)
   length_diff_percent_list.append(diff_pct)
   gen_list.append(out_graph_w_lengths.edges[edge]['generation'])
-np.savetxt("morphologicalAnalysis/lengthStats{}.txt".format(args.caseID),
-          np.c_[gen_list, length_gt_list, length_out_list, 
-                length_diff_list, length_diff_percent_list],
-          header="bifurcation level\tground truth\treconstruction\tdifference [mm]\tdifference [%]",
-          fmt="%4f")
+if args.write:
+  np.savetxt("morphologicalAnalysis/lengthStats{}.txt".format(args.caseID),
+            np.c_[gen_list, length_gt_list, length_out_list, 
+                  length_diff_list, length_diff_percent_list],
+            header="bifurcation level\tground truth\treconstruction\tdifference [mm]\tdifference [%]",
+            fmt="%4f")
 
 print('diameter stats')
 diameter_gt_list = []
@@ -269,11 +275,12 @@ for edge in out_graph_w_lengths.edges:
   diameter_diff_list.append(diff)
   diameter_diff_percent_list.append(diff_pct)
   gen_list.append(gt_graph_w_diameter.edges[edge]['generation'])
-np.savetxt("morphologicalAnalysis/diameterStats{}.txt".format(args.caseID),
-          np.c_[gen_list, diameter_gt_list, diameter_out_list, 
-                diameter_diff_list, diameter_diff_percent_list],
-          header="bifurcation level\tground truth\treconstruction\tdifference [mm]\tdifference [%]",
-          fmt="%4f")
+if args.write:
+  np.savetxt("morphologicalAnalysis/diameterStats{}.txt".format(args.caseID),
+            np.c_[gen_list, diameter_gt_list, diameter_out_list, 
+                  diameter_diff_list, diameter_diff_percent_list],
+            header="bifurcation level\tground truth\treconstruction\tdifference [mm]\tdifference [%]",
+            fmt="%4f")
 
 out_branch_graph = getBranchAngle(out_branch_graph)
 gt_branch_graph = getBranchAngle(gt_branch_graph)
@@ -300,10 +307,11 @@ for node in out_branch_graph.nodes:
     angle_diff_list.append(diff)
     angle_diff_percent_list.append(diff_pct)
     gen_list.append(out_branch_graph.nodes[node]['generation'])
-np.savetxt("morphologicalAnalysis/angleStats{}.txt".format(args.caseID),
-          np.c_[gen_list, angle_gt_list, angle_out_list, angle_diff_list, angle_diff_percent_list],
-          header="bifurcation level\tground truth\treconstruction\tdifference [degrees]\tdifference [%]",
-          fmt="%4f")
+if args.write:
+  np.savetxt("morphologicalAnalysis/angleStats{}.txt".format(args.caseID),
+            np.c_[gen_list, angle_gt_list, angle_out_list, angle_diff_list, angle_diff_percent_list],
+            header="bifurcation level\tground truth\treconstruction\tdifference [degrees]\tdifference [%]",
+            fmt="%4f")
 # vp = v.Plotter()
 # for edge in out_branch_graph.edges:
 #   p1 = out_branch_graph.nodes[edge[0]]['pos']
