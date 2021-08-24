@@ -232,13 +232,15 @@ class RespiratoryReconstructSSAM:
     print("\tprior loss", prior)#round(prior,4))
     # self.c_edge = 0.2
     tallest_pt = airway_morphed[np.argmax(airway_morphed[:,2])]
-    gradFit = self.gradientTerm(airway_morphed, self.imgGrad, self.imgCoords)
+    if self.c_grad != 0.0:
+      gradFit = self.gradientTerm(airway_morphed, self.imgGrad, self.imgCoords)
 
     top_dist = 1.0-np.exp(-1.0*abs(tallest_pt[2]-self.imgCoords[:,1].max())/5.0)
     # top_dist = abs(tallest_pt[2]-self.imgCoords[:,1].max())
 
     E = (self.c_prior*prior)+(self.c_dense*densityFit)+(self.c_edge*fit)
-    E += self.c_grad*gradFit
+    if self.c_grad != 0.0:
+      E += self.c_grad*gradFit
     E += top_dist*0.2
     if not self.quiet: print('top dist', top_dist)
     if outside_bounds:
@@ -259,7 +261,7 @@ class RespiratoryReconstructSSAM:
     E += loss_anatomicalShadow
     print("\ttotal loss", E)
 
-    if self.optIter % 500 == 0 and not self.quiet:
+    if self.optIter % 250 == 0 and not self.quiet:
       self.overlayAirwayOnXR(self.img, all_morphed, scale, pose)
       # exit()
     # if np.isnan(E):
@@ -682,10 +684,10 @@ class RespiratoryReconstructSSAM:
       #   continue
       # else:
       projLM_key = self.projLM_ID[key]
-      print(key, projLM_key)
+      # print(key, projLM_key)
       plt.scatter(coords[self.lmOrder[key]][projLM_key,0], 
                   coords[self.lmOrder[key]][projLM_key,2], 
-                  s=10, c='pink')
+                  s=8, c='yellow')
 
     # plt.text(self.imgCoords[:,0].min()*0.9,self.imgCoords[:,1].max()*0.9, 
     #          "pos {}, scale{}".format(str(pos), str(scale)))
