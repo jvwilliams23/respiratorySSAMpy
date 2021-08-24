@@ -184,6 +184,36 @@ def getInputs():
   #         xray, c_edge, c_dense, c_prior, imgSpacing
   return args
 
+def plotDensityError(shape_lms, densityIn, densityMinus=0, tag=""):
+  '''
+  Plots the error in two gray-values (density) compared to each other.
+  Could apply to density at LM location - density from model,
+  or density from model - density from mean for example.
+  Parameters
+  ----------
+  shape_lms (np.ndarray, NL, 3): shape for coordinates on scatter.
+  densityIn (np.ndarray, NL): some density value for each landmark.
+  densityMinus (np.ndarray, NL or float): a density value to subtract
+  tag (str): some tag to include in file name
+  '''
+  plt.close()
+  fig, ax = plt.subplots(1, 
+                        figsize=(16/2.54,10/2.54))
+  a = ax.scatter(shape_lms[:,0], shape_lms[:,2], 
+                    cmap="seismic", 
+                    c=abs(densityIn-densityMinus).reshape(-1),
+                    vmin=0, vmax=1,
+                    s=5)
+  ax.axes.xaxis.set_ticks([])
+  ax.axes.yaxis.set_ticks([])
+  #-set colorbar
+  cb = fig.colorbar(a, ax=ax)
+  cb.set_label("density", fontsize=11)
+  fig.suptitle("Density error in reconstruction", fontsize=12)
+  fig.savefig("./images/reconstruction/debug/density-error"+tag+".png", 
+                pad_inches=0, format="png", dpi=300)
+  return None
+
 def getShapeParameters(average_landmarks, input_landmarks, 
                        shape_model, model_std):
   """
@@ -281,6 +311,16 @@ if __name__=='__main__':
   kernel_distance = args.kernel_distance
   imgSpaceCoeff = args.imgSpacing
 
+  shapes = ['Airway', 'RUL', 'RML', 'RLL', 'LUL', 'LLL']
+  # shapes = ['Airway']
+  lobes = ['RUL', 'RML', 'RLL', 'LUL', 'LLL']
+  # numbering for each lobe in file
+  lNums = {"RUL": "4",
+           "RML": "5",
+           "RLL": "6",
+           "LUL": "7",
+           "LLL": "8"
+           }
 
   # landmarkDir, case, tag, describedVariance, drrDir, debug, \
   #         shapes, surfDir, numEpochs, xrayEdgeFile, \
@@ -355,6 +395,14 @@ if __name__=='__main__':
 
   lmOrder = dict.fromkeys(shapes)
   lmOrder['SKELETON'] = np.loadtxt(landmarkDir+'landmarkIndexSkeleton.txt').astype(int)
+  lmOrder['LUNGS'] = []
+  for shape in shapes:
+    lmOrder[shape] = np.loadtxt(landmarkDir+'landmarkIndex{}.txt'.format(shape),
+                                dtype=int)
+    if shape in lobes:
+      lmOrder['LUNGS'].extend(list(lmOrder[shape]))
+  lmOrder['LUNGS'] = np.array(lmOrder['LUNGS'])
+
   lgraph = getMeanGraph(patientIDs, landmarks, landmarks.mean(axis=0))
   nx.write_gpickle(lgraph, 
                     'skelGraphs/nxGraphLandmarkMean.pickle')
@@ -378,11 +426,13 @@ if __name__=='__main__':
                               for o in spacingDirs)
   # crop last two rows of pixels off XR so white pixels don't interfere with normalising
   drrArr = np.rollaxis(
-                      np.dstack([utils.loadXR(o)[:-2,:-2][::imgSpaceCoeff,::imgSpaceCoeff] 
+                      # np.dstack([utils.loadXR(o)[:-2,:-2][::imgSpaceCoeff,::imgSpaceCoeff] 
+                      np.dstack([utils.loadXR(o)[::imgSpaceCoeff,::imgSpaceCoeff] 
                         for o in imDirs]),
                       2, 0)
-  carinaArr = nodalCoordsOrig[:,1]
+
   #-offset centered coordinates to same reference frame as CT data
+  carinaArr = nodalCoordsOrig[:,1]
   lmProj = landmarks + carinaArr[:,np.newaxis]
 
   #-load pre-prepared mean stl and point cloud of all data
@@ -476,25 +526,12 @@ if __name__=='__main__':
   #-keep vertical alignment term for later use
   lmAlign = meanArr[:,2].mean() #landmarks[:,2].mean()
   meanArr[:,2] -= lmAlign
-
-  shapes = ['Airway', 'RUL', 'RML', 'RLL', 'LUL', 'LLL']
-  # shapes = ['Airway']
-  lobes = ['RUL', 'RML', 'RLL', 'LUL', 'LLL']
-  # numbering for each lobe in file
-  lNums = {"RUL": "4",
-           "RML": "5",
-           "RLL": "6",
-           "LUL": "7",
-           "LLL": "8"
-           }
   
   modelDict = dict.fromkeys(shapes)
   inputCoords = dict.fromkeys(shapes)
   inputCoords['ALL'] = meanArr
   modelDict['ALL'] = model
   for shape in shapes:
-    lmOrder[shape] = np.loadtxt(landmarkDir+'landmarkIndex{}.txt'.format(shape),
-                                dtype=int)
     inputCoords[shape] = copy(meanArr[lmOrder[shape]])
     modelDict[shape] = model.reshape(len(landmarks), -1, 4)[:,lmOrder[shape]]
 
@@ -737,32 +774,18 @@ if __name__=='__main__':
     print('finished getting projected landmarks. Time taken = {} s'.format(time()-t1))
 
     assam.fissureLM_ID = 0
-
-    scaleInit = np.array([1,1])
-    initPose = np.array([
-                          0,
-                          0,
-                          scaleInit[0],
-                        ])
-
-    bounds = np.array([
-                      (-np.inf, np.inf),
-                      (-np.inf, np.inf),
-                      (0.7, 2),
-                      (-3,3)])
-
     t1 = time()
 
-    # assam.projLM_IDAll = []
-    # pointCounter = 0
-    # for key in assam.projLM_ID.keys():
-    #   print("\n{}".format(key))
-    #   if key not in ['Airway', 'RML']:
-    #     assam.projLM_IDAll.extend(assam.projLM_ID[key]+pointCounter)
-    #     # tmp_id = np.arange(0, inputCoords[key].shape[0], 1)
-    #     # assam.projLM_IDAll.extend(tmp_id+pointCounter)
-    #   pointCounter += inputCoords[key].shape[0]
-    # assam.projLM_IDAll = np.array(assam.projLM_IDAll)
+    assam.projLM_IDAll = []
+    pointCounter = 0
+    for key in assam.projLM_ID.keys():
+      print("\n{}".format(key))
+      if key not in ['Airway', 'RML']:
+        assam.projLM_IDAll.extend(list(np.array(assam.projLM_ID[key])+pointCounter))
+        # tmp_id = np.arange(0, inputCoords[key].shape[0], 1)
+        # assam.projLM_IDAll.extend(tmp_id+pointCounter)
+      pointCounter += inputCoords[key].shape[0]
+    assam.projLM_IDAll = np.array(assam.projLM_IDAll)
 
     if debug:
       plot_pts = surfCoords_mm['Airway'][assam.projLM_ID['Airway']]
@@ -774,22 +797,25 @@ if __name__=='__main__':
         # plt.scatter(projlm_basenew[key][:,0], projlm_basenew[key][:,1])
         # plt.scatter(projlm_base[key][:,0], projlm_base[key][:,1])
       plt.show()
-    # exit()
+      plt.close()
+      # plt.scatter(plot_pts[:,0], plot_pts[:,2])
+      for key in lobes:
+        plt.scatter(inputCoords[key][assam.projLM_ID[key],0], 
+                    inputCoords[key][assam.projLM_ID[key],2])
+        # plt.scatter(projlm_basenew[key][:,0], projlm_basenew[key][:,1])
+        # plt.scatter(projlm_base[key][:,0], projlm_base[key][:,1])
+      plt.show()
     #######################################################################
-    optTrans_new = dict.fromkeys(["pose", "scale"])#copy(optTrans)
+    optTrans_new = dict.fromkeys(["pose", "scale"])
     optTrans_new["pose"] = [0,0]
     optTrans_new["scale"] = 1
     initPose = np.array([optTrans_new["pose"][0],
-                         # 0,
                          optTrans_new["pose"][1],
-                         1#optTrans_new["scale"]
+                         1
                         ])
     bounds = np.array([
                       (-20, 20),
                       (-20, 20),
-                      # (optTrans_new["pose"][0]-20, optTrans_new["pose"][0]+20),#edgePoints_mm[:,0].max()),
-                      # #(-np.inf, np.inf),
-                      # (optTrans_new["pose"][1]-10, optTrans_new["pose"][1]+10),
                       (0.4, 2.0),#(optTrans_new["scale"]*0.9, optTrans_new["scale"]*1.1),
                       (-3,3)])#(-3, 3)])
 
@@ -811,6 +837,13 @@ if __name__=='__main__':
                                 )
     outShape = assam.centerThenScale(outShape, optAll['scale'], outShape.mean(axis=0))
 
+    # population mean density for each landmark, 1D arr with len=num lms
+    density_mean = assam.density.mean(axis=0)
+    # density at landmark location
+    density_at_lm = assam.getDensity(outShape, img, imgCoords)
+    density_from_model = assam.getg_allModes(density_mean, 
+                                              assam.model_g['ALL'][:len(optAll['b'])], 
+                                              optAll['b']*np.sqrt(assam.variance)) 
 
     out_file = '{}_{}.{}'
     out_surf_file = 'surfaces/'+out_file
@@ -850,6 +883,13 @@ if __name__=='__main__':
 
     distX = utils.euclideanDist(outShape[:,[0]], lmProj_test[0][:,[0]])
     dist2D = utils.euclideanDist(outShape[:,[0,2]], lmProj_test[0][:,[0,2]])
+
+    # plotDensityError(outShape, density_at_lm, 
+    #                     tag='from1')
+    plotDensityError(outShape, density_at_lm, 
+                        density_from_model, tag='fromModel')
+    plotDensityError(outShape, density_at_lm, 
+                        density_mean, tag='fromMean')
 
     # ax[0].imshow(img, cmap="gray", extent=extent) 
     # ax[0].scatter(edgePoints[:,0], edgePoints[:,1],s=2) 
