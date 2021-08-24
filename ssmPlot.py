@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from vtkplotter import *
 from matplotlib.lines import Line2D
-from math import ceil
+from math import ceil, floor
 
 colList = [(0.47843137254901963, 0.47843137254901963, 0.47843137254901963),
 			(1.0,170.0/255.0,0.0), (1.0, 0.3333333333333333, 0.4980392156862745), 
@@ -123,6 +123,9 @@ def plotSpecErr(error, tag=""):
 def myround(x, base=5):
 	return base * ceil(x/base)
 
+def myfloor(x, base=5):
+	return base * floor(x/base)
+
 def plotSSMmetrics(compac, recon, gen, spec, tag="", shapeName='shape1'):
 	if tag != "":
 		tag = "-" + tag
@@ -195,4 +198,128 @@ def plotSSMmetrics(compac, recon, gen, spec, tag="", shapeName='shape1'):
 						top=0.95, bottom=0.15, right=0.95) 
 
 	plt.savefig("images/SSM/metrics-error-chart"+tag+".pdf")
+	return None
+
+def plotSSMmetrics_three(compac, recon, gen, tag="", units='mm', shapeName='shape1'):
+	if tag != "":
+		tag = "-" + tag
+	from matplotlib.ticker import (MultipleLocator, AutoMinorLocator)
+	plt.close()
+	fig, ax = plt.subplots(1, 3, figsize=cm2inch(17,6))#, sharex=True)
+	colList = ["black"]
+	col = "black"
+	labels = [shapeName]
+	title_font = 11
+	label_size = 10
+	x_interval = 10
+
+	ntrain = compac.shape[0]
+	xi = np.arange(0,ntrain)+1
+	# print(xi, xi.shape)
+	y = np.mean(compac, axis=1)
+	yerr = np.std(compac, axis=1)
+	ax[0].plot(xi, y, marker='o',ms=2, linestyle='-', 
+				color=col, mec=col, mfc=col)
+	# ax[0].errorbar(xi, y, yerr=yerr,c=col, label='both limits (default)')
+	ax[0].set_title('Compactness', fontsize=title_font)
+	ax[0].set_ylabel('Variance [%]', fontsize=label_size)
+	ax[0].set_xlabel('Components', fontsize=label_size)
+	ax[0].set_xticks(np.arange(0,myround(xi.shape[0], x_interval)+1, x_interval))
+	ax[0].set_xlim(0, myround(xi.shape[0], x_interval)+1)
+	ax[0].xaxis.set_minor_locator(MultipleLocator(5))
+	ax[0].xaxis.grid(True, which='minor')
+	ax[0].set_ylim([0, 100.])
+	ax[0].yaxis.set_minor_locator(MultipleLocator(0.2*100))
+	ax[0].grid(axis='x')
+	# show error for used number of modes
+	mode_loc = np.argmin(abs(y-0.9*100.))
+	modes = xi[mode_loc]
+	ymax = y[mode_loc]
+	ylims = ax[0].get_ylim()
+	ymax_pct = (ymax-ylims[0])/(ylims[1]-ylims[0])
+	ax[0].axvline(modes, ymax=ymax_pct, linestyle='--', c='blue', alpha=0.5)
+	xmax = xi[mode_loc]
+	xlims = ax[0].get_xlim()
+	xmax_pct = (xmax-xlims[0])/(xlims[1]-xlims[0])
+	ax[0].axhline(ymax, xmax=xmax_pct, linestyle='--', c='blue', alpha=0.5)
+
+	ntrain = recon.shape[0]
+	xi = np.arange(0,ntrain)+1
+	y = np.mean(recon, axis=1)
+	yerr = np.std(recon, axis=1)/np.sqrt(ntrain-1)
+	# print(yerr)
+	# print(y)
+	ax[1].plot(xi, y, marker='o',ms=2, linestyle='-', 
+				color=col, mec=col, mfc=col)
+	# ax[1].errorbar(xi, y, yerr=yerr,c=col, label='both limits (default)')
+	ax[1].set_title('Reconstruction', fontsize=title_font)
+	ax[1].set_ylabel('Point to point error [{}]'.format(units), fontsize=label_size)
+	ax[1].set_xlabel('Components', fontsize=label_size)
+	# ax[1].yaxis.set_major_locator(MultipleLocator(5))
+	ylims = ax[1].get_ylim()
+	# ax[1].set_ylim([0, myround(ylims[1],1.)])
+	ax[1].set_ylim([0, ylims[1]])
+	# ax[1].yaxis.set_minor_locator(MultipleLocator(5))
+	# print(ylims)
+	ax[1].set_xticks(np.arange(0,myround(xi.shape[0], x_interval)+1,x_interval))
+	ax[1].set_xlim(0, myround(xi.shape[0], x_interval)+1)
+	ax[1].xaxis.set_minor_locator(MultipleLocator(5))
+	ax[1].xaxis.grid(True, which='minor')
+	ax[1].grid(axis='x')
+	# show error for used number of modes
+	# linear interpolate lines for errors
+	ymax = y[mode_loc]
+	ylims = ax[1].get_ylim()
+	# print(ylims)
+	ymax_pct = (ymax-ylims[0])/(ylims[1]-ylims[0])
+	ax[1].axvline(modes, ymax=ymax_pct, linestyle='--', c='blue', alpha=0.5)
+	xmax = xi[mode_loc]
+	xlims = ax[1].get_xlim()
+	xmax_pct = (xmax-xlims[0])/(xlims[1]-xlims[0])
+	ax[1].axhline(ymax, xmax=xmax_pct, linestyle='--', c='blue', alpha=0.5)
+	
+	y = np.mean(gen,axis=1)
+	yerr = np.std(gen,axis=1)/np.sqrt(ntrain-1)
+	ax[2].plot(xi, y, marker='o',ms=2, linestyle='-', 
+				color=col, mec=col, mfc=col)
+	ax[2].set_title('Generalisation', fontsize=title_font)
+	ax[2].errorbar(xi, y, yerr=yerr,c=col, label='both limits (default)')
+	ax[2].set_ylabel('Point to point error [{}]'.format(units), fontsize=label_size)
+	ylims = ax[2].get_ylim()
+	ax[2].set_ylim([0., ylims[1]])#myround(ylims[1])])
+	ax[2].set_ylim([0., myround(ylims[1],1.)])
+	# ax[2].yaxis.set_minor_locator(MultipleLocator(5))
+	# ax[2].set_ylim([myfloor(ylims[0]), myround(ylims[1])])
+	# ax[2].yaxis.set_major_locator(MultipleLocator(5))
+	ax[2].set_xlabel('Components', fontsize=label_size)
+	ax[2].set_xticks(np.arange(0,myround(xi.shape[0], x_interval)+1,x_interval))
+	ax[2].set_xlim(0, myround(xi.shape[0], x_interval)+1)
+	ax[2].xaxis.set_minor_locator(MultipleLocator(5))
+	ax[2].xaxis.grid(True, which='minor')
+	ax[2].grid(axis='x')
+	# show error for used number of modes
+	# linear interpolate lines for errors
+	ymax = y[mode_loc]
+	ylims = ax[2].get_ylim()
+	ymax_pct = (ymax-ylims[0])/(ylims[1]-ylims[0])
+	# print(ylims, ymax_pct)
+	ax[2].axvline(modes, ymax=ymax_pct, linestyle='--', c='blue', alpha=0.5)
+	xmax = xi[mode_loc]
+	xlims = ax[2].get_xlim()
+	xmax_pct = (xmax-xlims[0])/(xlims[1]-xlims[0])
+	ax[2].axhline(ymax, xmax=xmax_pct, linestyle='--', c='blue', alpha=0.5)
+
+
+	lines = [Line2D([0],[0], marker='o',ms=2, linestyle='-', 
+						color=col, mec=col, mfc=col) for col in colList]
+	# plt.legend(lines, labels,
+	# 			bbox_to_anchor=(-0.2, -0.4), loc='lower center', 
+	# 			ncol=5,#len(compac.keys()), 
+	# 			 fontsize=11,\
+	# 			 frameon=False)#loc=[0.0, 0.7]
+	plt.subplots_adjust(right=0.98,left=0.085, bottom=0.200, wspace=0.450) 
+
+	# plt.show()
+	plt.savefig("images/SSM/metrics3-error-chart"+tag+".pdf")
+	plt.savefig("images/SSM/metrics3-error-chart"+tag+".svg")
 	return None
