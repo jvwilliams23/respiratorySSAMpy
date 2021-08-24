@@ -167,7 +167,7 @@ if __name__ == "__main__":
       plt.show()
   #-write coordinates
   out_dir = path.dirname(args.inputFile)
-  out_name = path.join(outdir, args.outlineFileName)
+  out_name = path.join(out_dir, args.outlineFileName)
   # imDir = "DRRs_edgeMapWorkdir/luna16/{}/".format(patientID)
   # np.savetxt(compareDir+outlineCompareNameOut, coords, delimiter=",")
   np.savetxt(out_name, coords, delimiter=",")
