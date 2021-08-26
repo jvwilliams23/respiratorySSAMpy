@@ -567,6 +567,11 @@ if __name__ == "__main__":
   view = args.lateral
   if not view:
     view = "frontal"
+  else:
+    if view.lower() == 'r':
+      view = 'right'
+    elif view.lower() == 'l':
+      view = 'left'
 
   # if not writeName:
   #   writeName = str(date.today())+"test.csv"
@@ -577,7 +582,7 @@ if __name__ == "__main__":
   convCTxr = ConvertCT2XRay(ct, spacing, view=view)
 
   if view != "frontal":
-    tag = tag + "-lateral-" + view[0].lower()
+    tag = tag + "-lateral-" + view.lower() #[0].lower()
   # save image and write metadata file with pixel spacing
   save_image(convCTxr.xray_2D, writeDir + "drr-" + tag + ".png")
   # show_image(convCTxr.xray_2D)
