@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 # from myshow import myshow
 from copy import copy
 from skimage.measure import label
+from skimage.transform import rotate
 
 import SimpleITK as sitk
 from sys import exit
@@ -23,20 +24,6 @@ import argparse
 from datetime import date
 
 debug = False
-
-tag = "test"
-
-exact09 = (
-  "/home/josh/Dropbox (Heriot-Watt University Team)/"
-  "RES_EPS_Biomechanics/2019-MyLung/06_Research/"
-  "2020-MSc-DBustamante-SAM-Segmentation/imageData/"
-  "exact09/Training/CASE20/"
-)
-lidc_dir = (
-  "/home/josh/3DSlicer/project/"
-  "LIDC-IDRI/LIDC-IDRI-0002/01-01-2000-98329/3000522.000000-04919/"
-)
-
 
 def getArgs():
   parser = argparse.ArgumentParser(description=__doc__)
@@ -57,7 +44,7 @@ def getArgs():
   parser.add_argument(
     "--out",
     "-o",
-    default="out.png",
+    default="out",
     type=str,
     help="outline file name (x-ray png)",
   )
@@ -68,6 +55,14 @@ def getArgs():
     type=bool,
     help="debug mode prints checks and shows image checks",
   )
+  parser.add_argument(
+    "--lateral",
+    "-l",
+    default=False,
+    choices=["right", "r", "left", "l"],
+    type=str,
+    help="lateral view XR? If none XR is frontal",
+  )
 
   return parser.parse_args()
 
@@ -77,8 +72,10 @@ class ConvertCT2XRay:
   Class to convert CT dataset to X-ray.
   """
 
-  def __init__(self, ct_3d, spacing):
+  def __init__(self, ct_3d, spacing, view="frontal"):
 
+    # view of X-ray [frontal, left, right]
+    self.view = view
     # initialise X-ray setup
     source, destination_board = self.configureRayTracing(ct_3d)
     # convert CT to X-ray
@@ -104,8 +101,6 @@ class ConvertCT2XRay:
 
     # Check whether these are simple cases - the board is positioned straight
     # and there are no transitions between the y axis
-    same_ys_top = dest_board[0].y == dest_board[1].y
-    same_ys_bottom = dest_board[2].y == dest_board[3].y
     same_zs = all(corner.z == dest_board[0].z for corner in dest_board)
     same_ys = all(corner.y == dest_board[0].y for corner in dest_board)
     same_xs = all(corner.x == dest_board[0].x for corner in dest_board)
@@ -116,39 +111,74 @@ class ConvertCT2XRay:
     # print(board_zs)
     # print("board_ys", board_ys)
     progress_list = []  # check if progress % has been shown
-    for z_i, dcm in enumerate(ct_3d[min(board_zs) : max(board_zs)]):
-      # simplest case - all the corners of the flat are in the same y axis
-      # if same_ys:
-      assert (
-        same_ys
-      ), "corners should have same y coordinate. Others not implemented."
-      row = []
-      # check the direction of the x-ray and
-      # set the y range for the integral calculation
-      if dest_board[0].y > xray_source.y:
-        y_range = range(xray_source.y, dest_board[0].y)
-      else:
-        y_range = reversed(range(xray_source.y + 1, dest_board[0].y - 1))
 
-      # iterate over x axis in the dcm
-      board_xs = [corner.x for corner in dest_board]
-      for x_i in range(len(dcm[0][min(board_xs) : max(board_xs)])):
-        new_pixel_val = 0
-        # iterate over z axis and find calculate the integral
-        for y_i in y_range:
-          pixel_val = dcm[y_i][x_i]
-          if pixel_val >= 0:  # in the cone range
-            # calculate the integral
-            new_pixel_val += pixel_val
+    if same_ys:
+      for z_i, dcm in enumerate(ct_3d[min(board_zs) : max(board_zs)]):
+        # simplest case - all the corners of the flat are in the same y axis
+        # if same_ys:
+        assert same_ys, "corners should have same y coordinate. Others not implemented."
+        row = []
+        # check the direction of the x-ray and
+        # set the y range for the integral calculation
+        if dest_board[0].y > xray_source.y:
+          y_range = range(xray_source.y, dest_board[0].y)
+        else:
+          y_range = reversed(range(xray_source.y + 1, dest_board[0].y - 1))
 
-        row.append(new_pixel_val)
-      out_scan.append(row)
+        # iterate over x axis in the dcm
+        board_xs = [corner.x for corner in dest_board]
+        for x_i in range(len(dcm[0][min(board_xs) : max(board_xs)])):
+          new_pixel_val = 0
+          # iterate over z axis and find calculate the integral
+          for y_i in y_range:
+            pixel_val = dcm[y_i][x_i]
+            if pixel_val >= 0:  # in the cone range
+              # calculate the integral
+              new_pixel_val += pixel_val
 
-      # print percentage until completion as check
-      progress = int(z_i / len(ct_3d) * 100)
-      if progress % 10 == 0 and progress not in progress_list:
-        progress_list.append(progress)
-        print(f"\t{int(z_i/len(ct_3d) * 100)} %\r")
+          row.append(new_pixel_val)
+        out_scan.append(row)
+
+        # print percentage until completion as check
+        progress = int(z_i / len(ct_3d) * 100)
+        if progress % 10 == 0 and progress not in progress_list:
+          progress_list.append(progress)
+          print(f"\t{int(z_i/len(ct_3d) * 100)} %\r")
+    else:
+      for z_i, dcm in enumerate(ct_3d[min(board_zs) : max(board_zs)]):
+        # if taking x-ray from patient's right, rotate slice by 180 degrees
+        if self.view[0].lower() == "r":
+          dcm = rotate(dcm, 180)
+        # simplest case - all the corners of the flat are in the same y axis
+        row = []
+        # check the direction of the x-ray and
+        # set the y range for the integral calculation
+        if dest_board[0].x > xray_source.x:
+          x_range = np.arange(xray_source.x, dest_board[0].x)
+        else:
+          x_range = np.arange(dest_board[0].x, xray_source.x)[::-1]
+
+        # iterate over x axis in the dcm
+        board_ys = [corner.y for corner in dest_board]
+
+        for y_i in range(len(dcm[0][min(board_ys) : max(board_ys)])):
+          new_pixel_val = 0
+          # iterate over z axis and find calculate the integral
+          for x_i in x_range:
+            # pixel_val = dcm[x_i][y_i]
+            pixel_val = dcm[y_i][x_i]
+            if pixel_val >= 0:  # in the cone range
+              # calculate the integral
+              new_pixel_val += pixel_val
+
+          row.append(new_pixel_val)
+        out_scan.append(row)
+
+        # print percentage until completion as check
+        progress = int(z_i / len(ct_3d[min(board_zs) : max(board_zs)]) * 100)
+        if progress % 10 == 0 and progress not in progress_list:
+          progress_list.append(progress)
+          print(f"\t{int(z_i/len(ct_3d[min(board_zs) : max(board_zs)]) * 100)} %\r")
 
     return out_scan
 
@@ -235,14 +265,22 @@ class ConvertCT2XRay:
                              coordinate as class object i.e. source.x is x coordinate
     board (list of point3D object): corner coordinates of X-ray board
     """
-    # source = Point3D(256, 162, 50)
-    source = Point3D(250, 250, 50)
-    board = [
-      Point3D(0, ct[0].shape[1], len(ct)),
-      Point3D(ct[0].shape[0], ct[0].shape[1], len(ct)),
-      Point3D(0, ct[0].shape[1], 0),
-      Point3D(ct[0].shape[0], ct[0].shape[1], 0),
-    ]
+    if self.view == "frontal":
+      source = Point3D(250, 250, 50)
+      board = [
+        Point3D(0, ct[0].shape[1], len(ct)),
+        Point3D(ct[0].shape[0], ct[0].shape[1], len(ct)),
+        Point3D(0, ct[0].shape[1], 0),
+        Point3D(ct[0].shape[0], ct[0].shape[1], 0),
+      ]
+    else:
+      source = Point3D(50, 250, 250)
+      board = [
+        Point3D(ct[0].shape[0], 0, len(ct)),
+        Point3D(ct[0].shape[0], ct[0].shape[1], len(ct)),
+        Point3D(ct[0].shape[0], 0, 0),
+        Point3D(ct[0].shape[0], ct[0].shape[1], 0),
+      ]
     return source, board
 
 
@@ -379,9 +417,7 @@ def resampleImage(imageIn, scanSize=[512, 512, 512], allAxes=True):
   # Euler transform to get extreme points to resample image
   euler3d = sitk.Euler3DTransform()
   euler3d.SetCenter(
-    imageIn.TransformContinuousIndexToPhysicalPoint(
-      np.array(imageIn.GetSize()) / 2.0
-    )
+    imageIn.TransformContinuousIndexToPhysicalPoint(np.array(imageIn.GetSize()) / 2.0)
   )
   tx = 0
   ty = 0
@@ -390,18 +426,12 @@ def resampleImage(imageIn, scanSize=[512, 512, 512], allAxes=True):
   extreme_points = [
     imageIn.TransformIndexToPhysicalPoint((0, 0, 0)),
     imageIn.TransformIndexToPhysicalPoint((imageIn.GetWidth(), 0, 0)),
-    imageIn.TransformIndexToPhysicalPoint(
-      (imageIn.GetWidth(), imageIn.GetHeight(), 0)
-    ),
+    imageIn.TransformIndexToPhysicalPoint((imageIn.GetWidth(), imageIn.GetHeight(), 0)),
     imageIn.TransformIndexToPhysicalPoint(
       (imageIn.GetWidth(), imageIn.GetHeight(), imageIn.GetDepth())
     ),
-    imageIn.TransformIndexToPhysicalPoint(
-      (imageIn.GetWidth(), 0, imageIn.GetDepth())
-    ),
-    imageIn.TransformIndexToPhysicalPoint(
-      (0, imageIn.GetHeight(), imageIn.GetDepth())
-    ),
+    imageIn.TransformIndexToPhysicalPoint((imageIn.GetWidth(), 0, imageIn.GetDepth())),
+    imageIn.TransformIndexToPhysicalPoint((0, imageIn.GetHeight(), imageIn.GetDepth())),
     imageIn.TransformIndexToPhysicalPoint((0, 0, imageIn.GetDepth())),
     imageIn.TransformIndexToPhysicalPoint((0, imageIn.GetHeight(), 0)),
   ]
@@ -534,6 +564,9 @@ if __name__ == "__main__":
   tag = args.out
   writeDir = args.writeDir
   debug = args.debug
+  view = args.lateral
+  if not view:
+    view = "frontal"
 
   # if not writeName:
   #   writeName = str(date.today())+"test.csv"
@@ -541,19 +574,17 @@ if __name__ == "__main__":
   #   print("Defaulting to", writeName)
 
   ct, spacing = dcm2ct3D_sitk(ctDir)
-  convCTxr = ConvertCT2XRay(ct, spacing)
+  convCTxr = ConvertCT2XRay(ct, spacing, view=view)
 
-  # convCTxr.xray_2D = convCTxr.cleanBlankRows(convCTxr.xray_2D)
-
+  if view != "frontal":
+    tag = tag + "-lateral-" + view[0].lower()
   # save image and write metadata file with pixel spacing
-  save_image(convCTxr.xray_2D, writeDir + "drr-" + tag)
+  save_image(convCTxr.xray_2D, writeDir + "drr-" + tag + ".png")
   # show_image(convCTxr.xray_2D)
   # exit()
   spacing = list(spacing)  # /500*512
-  f = open(writeDir + "drr-" + tag.replace(".png", ".md"), "w")
+  f = open(writeDir + "drr-" + tag + ".md", "w")
   f.write("Voxel spacing is\n")
-  f.write(
-    str(spacing[0]) + " " + str(spacing[1]) + " " + str(spacing[2]) + "\n"
-  )
+  f.write(str(spacing[0]) + " " + str(spacing[1]) + " " + str(spacing[2]) + "\n")
   f.close()
   # writeDir+"./drr-"+tag+".png", np.array(spacing)
