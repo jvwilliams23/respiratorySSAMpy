@@ -228,7 +228,7 @@ def plotDensityError(shape_lms, densityIn, densityMinus=0, tag=""):
   )
   ax.axes.xaxis.set_ticks([])
   ax.axes.yaxis.set_ticks([])
-  # -set colorbar
+  # set colorbar
   cb = fig.colorbar(a, ax=ax)
   cb.set_label("density", fontsize=11)
   fig.suptitle("Density error in reconstruction", fontsize=12)
@@ -404,20 +404,28 @@ if __name__ == "__main__":
   print("\tReading data")
   with open("config.json") as f:
     config = hjson.load(f)
-  # -read DRR data
-  # originDirs = glob(drrDir + "/origins/origins/drr*.md")  # .sort()
+  # read DRR data
   originDirs = filesFromRegex(config["luna16paths"]["origins"])
   spacingDirs = filesFromRegex(config["luna16paths"]["spacing"])
   imDirs = filesFromRegex(config["luna16paths"]["drrs"])
+  imDirs_left = filesFromRegex(config["luna16paths"]["drrs_left"])
+  imDirs_right = filesFromRegex(config["luna16paths"]["drrs_right"])
   patientIDs = matchesFromRegex(config["luna16paths"]["origins"])
 
-  # patientIDs = [i.split("/")[-1].replace(".png", "")[-4:] for i in originDirs]
-  # landmarkDirs = glob(landmarkDir + "/allLandmarks*.csv")
+  # read landmark data
   landmarkDirs = filesFromRegex(config["luna16paths"]["landmarks"])
-  lmIDs = [i.split("/")[-1].split("andmarks")[1][:4] for i in landmarkDirs]
+  lmIDs = matchesFromRegex(config["luna16paths"]["landmarks"])
   landmarkDirsOrig = glob("landmarks/manual-jw/landmarks*.csv")
   landmarkDirs.sort()
   landmarkDirsOrig.sort()
+
+  assert (
+    len(spacingDirs)
+    == len(imDirs)
+    == len(originDirs)
+    == len(imDirs_left)
+    == len(imDirs_right)
+  ), "Error reading image data"
 
   if (
     len(imDirs) == 0
@@ -438,7 +446,7 @@ if __name__ == "__main__":
   #                             +"transformParams_case*"
   #                             +"_m_"+shape+".dat")
 
-  # -remove scans without landmarks from DRR dirs
+  # remove scans without landmarks from DRR dirs
   missing = []
   missingID = []
   delInd = []
@@ -508,7 +516,7 @@ if __name__ == "__main__":
   # vp.show(lines,pNodes)
   # vp.show(interactive=True)
 
-  # -read appearance modelling data
+  # read appearance modelling data
   origin = np.vstack([np.loadtxt(o, skiprows=1)] for o in originDirs)
   spacing = np.vstack(
     [np.loadtxt(o, skiprows=1) * imgSpaceCoeff] for o in spacingDirs
@@ -523,21 +531,21 @@ if __name__ == "__main__":
     0,
   )
 
-  # -offset centered coordinates to same reference frame as CT data
+  # offset centered coordinates to same reference frame as CT data
   carinaArr = nodalCoordsOrig[:, 1]
   lmProj = landmarks + carinaArr[:, np.newaxis]
 
-  # -load pre-prepared mean stl and point cloud of all data
+  # load pre-prepared mean stl and point cloud of all data
   meanArr = landmarks.mean(axis=0)
 
-  # -reset new params
+  # reset new params
   landmarksAll = 0
   origin = copy(origin)
   spacing = copy(spacing)
   drrArr = copy(drrArr)
   # landmarks = lmProj.copy()
 
-  # -format data for testing by randomising selection and removing these
+  # format data for testing by randomising selection and removing these
   # from training
   assignedTestIDs = ["0645", "3948", "5268", "6730", "8865"]
   assignedTestIDs = ["3948"]
@@ -556,7 +564,7 @@ if __name__ == "__main__":
       testOverlapTrain = [True for p in testID if p in assignedTestIDs]
 
       for t in testSet[::-1]:
-        # -store test data in different list
+        # store test data in different list
         testID.append(patientIDs[t])
     print("randomising testing")
   else:
@@ -576,14 +584,14 @@ if __name__ == "__main__":
   landmarksDef = landmarks.copy()
   lmProj_test = []
   for t in testSet[::-1]:
-    # -store test data in different list
+    # store test data in different list
     testID.append(patientIDs[t])
     testOrigin.append(origin[t])
     testSpacing.append(spacing[t])
     testIm.append(drrArr[t])
     testLM.append(copy(landmarks[t]))
     lmProj_test.append(copy(landmarks[t]))
-    # -remove test data from train data
+    # remove test data from train data
     patientIDs.pop(t)
     origin = np.delete(origin, t, axis=0)
     spacing = np.delete(spacing, t, axis=0)
@@ -599,7 +607,7 @@ if __name__ == "__main__":
 
   # template_lm_file_lobes = landmarkDir+"/landmarks0{}-case8684.csv"
 
-  # -create appearance model instance and load data
+  # create appearance model instance and load data
   ssam = RespiratorySSAM(
     landmarks, lmProj, drrArr, origin, spacing, train_size=landmarks.shape[0]
   )
@@ -607,14 +615,14 @@ if __name__ == "__main__":
   model = ssam.phi_sg
   meanArr = np.mean(landmarks, axis=0)
 
-  # -set number of modes
+  # set number of modes
   numModes = np.where(
     np.cumsum(ssam.pca_sg.explained_variance_ratio_) > describedVariance
   )[0][0]
   print("modes used is", numModes)
 
-  # -center the lobes vertically
-  # -keep vertical alignment term for later use
+  # center the lobes vertically
+  # keep vertical alignment term for later use
   lmAlign = meanArr[:, 2].mean()  # landmarks[:,2].mean()
   meanArr[:, 2] -= lmAlign
 
@@ -709,8 +717,8 @@ if __name__ == "__main__":
     # mesh_template_lms[key] =
 
   # exit()
-  # -reorder unstructured stl file to be coherent w/ model and landmarks
-  # -extract mesh data (coords, normals and faces)
+  # reorder unstructured stl file to be coherent w/ model and landmarks
+  # extract mesh data (coords, normals and faces)
   for key in shapes:
     print("loading {} mesh".format(key))
     print("original num cells", len(mean_mesh[key].faces()))
@@ -721,12 +729,12 @@ if __name__ == "__main__":
     else:
       mesh = mean_mesh[key].clone().decimate(fraction=0.1).clean()
     print("decimated num cells", len(mesh.faces()))
-    # -load mesh data and create silhouette
+    # load mesh data and create silhouette
     surfCoords = mesh.points()
     meanNorms_face[key] = mesh.normals(cells=True)
     faces[key] = np.array(mesh.faces())
 
-    # -offset to ensure shapes are aligned to carina
+    # offset to ensure shapes are aligned to carina
     surfCoords_centred[key] = copy(surfCoords)
     surfCoords_mm[key] = surfCoords + carinaArr.mean(axis=0)
     surfCoords_mmOrig[key] = copy(surfCoords_mm[key])
@@ -743,26 +751,26 @@ if __name__ == "__main__":
   ):
 
     tag = tagBase + "_case" + tID
-    # -declare test image and pre-process
+    # declare test image and pre-process
     # imgOrig = copy(img) #-backup test image original
     img = (
       tImg.copy()
     )  # ssam.imgsN[caseIndex] #-load image directly from training data
-    img = ssam.sam.normaliseTestImageDensity(img)  # -normalise "unseen" image
+    img = ssam.sam.normaliseTestImageDensity(img)  # normalise "unseen" image
     imgCoords = ssam.sam.drrArrToRealWorld(
       img, np.zeros(3), tSpace  # [spacing_xr[0]]*3
     )[
       0
-    ]  # -index 0 as output is stacked
+    ]  # index 0 as output is stacked
     spacing_xr = (
       tSpace.copy()
     )  # *imgSpaceCoeff #-no need to multiply as already done earlier
-    # -center image coords, so in the same coord system as edges
+    # center image coords, so in the same coord system as edges
     imgCoords -= np.mean(
       imgCoords, axis=0
     )  # np.array([250,250])#*spacing_xr[[0,2]]
 
-    # -for plotting image in same ref frame as the edges
+    # for plotting image in same ref frame as the edges
     extent = [
       -img.shape[1] / 2.0 * spacing_xr[0],
       img.shape[1] / 2.0 * spacing_xr[0],
@@ -771,16 +779,16 @@ if __name__ == "__main__":
     ]
     extent_tmp = np.array(extent)
 
-    # -remove old optimisation visualisations
+    # remove old optimisation visualisations
     # remFiles = glob("images/xRayRecon/nevergrad/*.png")
     # for file in remFiles:
     #     remove(file)
-    # -edge points in units of pixels from edge map
+    # edge points in units of pixels from edge map
     xrayEdgeFile = "{}/{}/drr-outline-{}.csv".format(drrDir, tID, tID)
     edgePoints = np.loadtxt(xrayEdgeFile, delimiter=",")
     # edgePoints_tmp = edgePoints#*512/500
-    # -edge points in units of mm
-    # -for some reason spacing_xr[[0,1]] gives correct height of edge map?
+    # edge points in units of mm
+    # for some reason spacing_xr[[0,1]] gives correct height of edge map?
     edgePoints_mm = edgePoints
     edgePoints_mm = np.unique(edgePoints_mm, axis=0)
     print("check height", edgePoints_mm[:, 1].max() - edgePoints_mm[:, 1].min())
@@ -803,7 +811,7 @@ if __name__ == "__main__":
     # plt.show()
 
     # inputCoords = meanArr.copy()
-    # -declare posterior shape model class
+    # declare posterior shape model class
     assam = RespiratoryReconstructSSAM(
       shape=inputCoords,
       xRay=edgePoints_mm,
@@ -825,10 +833,10 @@ if __name__ == "__main__":
       kernel_radius=kernel_radius,
     )
     assam.spacing_xr = spacing_xr
-    # -import variables to class
+    # import variables to class
     assam.variance = ssam.variance[:numModes]
     assam.std = ssam.std[:numModes]
-    # -import functions to PSM class
+    # import functions to PSM class
     assam.getg_allModes = ssam.sam.getg_allModes
     assam.getDensity = ssam.sam.getDensity
     assam.normaliseTestImageDensity = ssam.sam.normaliseTestImageDensity
@@ -856,7 +864,7 @@ if __name__ == "__main__":
       projlm_basenew = copy(assam.projLM)
       projlmid_basenew = copy(assam.projLM_ID)
 
-      # -reorder projected surface points to same order as landmarks
+      # reorder projected surface points to same order as landmarks
       print("number proj airway pts", len(assam.projLM_ID["Airway"]))
       for key in shapes:
         print("reordering projected landmarks for", key)
@@ -881,7 +889,7 @@ if __name__ == "__main__":
         #   else:
         #     delInd.append(p)
         # print('finished reordering projected landmarks')
-        # -delete projected surfPoints which were not included in mapping to LM space
+        # delete projected surfPoints which were not included in mapping to LM space
         # assam.projLM_ID[key] = np.delete(assam.projLM_ID[key], delInd)
         # assam.projLM[key] = np.delete(assam.projLM[key], delInd, axis=0)
 
