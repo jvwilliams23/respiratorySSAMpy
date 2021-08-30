@@ -103,7 +103,7 @@ class RespiratorySAM:
   def landmarksToRealWorld(self, lm, trans):
     return lm + trans
 
-  def drrArrToRealWorld(self, img, origin, spacing):
+  def drrArrToRealWorld(self, img, origin, spacing, axes=[0,2]):
     '''
     Set bottom left coordinate to CT origin, and assign real world coord to DRR
     '''
@@ -113,15 +113,15 @@ class RespiratorySAM:
     xBase = np.linspace(0, img.shape[-2], img.shape[-2])
     zBase = np.linspace(0, img.shape[-1], img.shape[-1])
     if origin.ndim == 2:
-      xCoords = origin[:,0] \
-                +np.meshgrid(xBase,np.ones(spacing[:,0].size))[0].T*spacing[:,0]
-      zCoords = origin[:,2] \
-                +np.meshgrid(zBase,np.ones(spacing[:,2].size))[0].T*spacing[:,2]
+      xCoords = origin[:,axes[0]] \
+                +np.meshgrid(xBase,np.ones(spacing[:,axes[0]].size))[0].T*spacing[:,axes[0]]
+      zCoords = origin[:,axes[1]] \
+                +np.meshgrid(zBase,np.ones(spacing[:,axes[1]].size))[0].T*spacing[:,axes[1]]
     elif origin.ndim == 1:
-      xCoords = origin[0] \
-                +np.meshgrid(xBase,np.ones(spacing[0].size))[0].T*spacing[0]
-      zCoords = origin[2] \
-                +np.meshgrid(zBase,np.ones(spacing[2].size))[0].T*spacing[2]
+      xCoords = origin[axes[0]] \
+                +np.meshgrid(xBase,np.ones(spacing[axes[0]].size))[0].T*spacing[axes[0]]
+      zCoords = origin[axes[1]] \
+                +np.meshgrid(zBase,np.ones(spacing[axes[1]].size))[0].T*spacing[axes[1]]
     else:
       printc("unexpected origin dimensions in SAM.drrArrToRealWorld")
 
