@@ -6,6 +6,7 @@
 
 import argparse
 import random
+import re
 from concurrent import futures
 from copy import copy
 from datetime import date
@@ -16,6 +17,7 @@ from os import remove
 from sys import argv, exit
 from time import time
 
+import hjson
 import matplotlib.pyplot as plt
 import networkx as nx
 import nevergrad as ng
@@ -123,7 +125,8 @@ def getInputs():
   )
   parser.add_argument(
     "--drrs",
-    default="../xRaySegmentation/DRRs_enhanceAirway/luna16_cannyOutline/",
+    default="./DRRs/luna16/",
+    # default="../xRaySegmentation/DRRs_enhanceAirway/luna16_cannyOutline/",
     type=str,
     help="input files (drr)",
   )
@@ -197,24 +200,6 @@ def getInputs():
   )
 
   args = parser.parse_args()
-  # inputDir = args.inp
-  # tag = args.out
-  # case = args.case
-  # var = args.var
-  # drrDir = args.drrs
-  # debugMode = args.debug
-  # shapeKey = args.shapes.split()
-  # surfDir = args.meshdir
-  # numEpochs = args.epochs
-  # xray = args.xray
-  # c_edge = args.c_edge
-  # c_dense = args.c_dense
-  # c_prior = args.c_prior
-  # imgSpacing = args.imgSpacing
-
-  # return inputDir, case, tag, var, drrDir, \
-  #         debugMode, shapeKey, surfDir, numEpochs, \
-  #         xray, c_edge, c_dense, c_prior, imgSpacing
   return args
 
 
@@ -338,6 +323,47 @@ def getMeanGraph(
   return lgraphMean
 
 
+def filesFromRegex(path):
+  """
+  Given an input template path as BASEDIR/..../file-in-dir-.....ext
+  Find all files that match the regex
+  """
+  regex = re.compile(path)
+  all_paths = glob(path.replace(".", "*"))
+  match_path = [p for p in all_paths if re.match(regex, p)]
+  match_path.sort()
+  return match_path
+
+
+def matchesFromRegex(path):
+  """
+  Given an input template path as BASEDIR/..../file-in-dir-.....ext
+  Find all strings that represented by regex wildcards i.e. if
+  path = DRRs/..../drr-.....ext
+  and
+  match = DRRs/0596/drr-0596.ext
+  add 0596 to a list
+  Parameters
+  ----------
+  string of a path with wildcards to represent various case IDs
+  """
+  regex = re.compile(path)
+  all_paths = glob(path.replace(".", "*"))
+  matches = []
+  for p in all_paths:
+    if re.match(regex, p):
+      id_match = ""
+      for search_letter, match_letter in zip(path, p):
+        if search_letter == "." and match_letter != ".":
+          id_match += match_letter
+          # print('match', match_letter, search_letter)
+        elif search_letter != "." and id_match != "":
+          break
+      matches.append(id_match)
+  matches.sort()
+  return matches
+
+
 if __name__ == "__main__":
   date_today = str(date.today())
   print(__doc__)
@@ -376,20 +402,23 @@ if __name__ == "__main__":
   spacing_xr = None
 
   print("\tReading data")
+  with open("config.json") as f:
+    config = hjson.load(f)
   # -read DRR data
-  originDirs = glob(drrDir + "/origins/origins/drr*.md")  # .sort()
-  spacingDirs = glob(drrDir + "/*/drr*.md")  # .sort()
-  imDirs = glob(drrDir + "/*/drr*.png")  # .sort()
-  originDirs.sort()
-  spacingDirs.sort()
-  imDirs.sort()
+  # originDirs = glob(drrDir + "/origins/origins/drr*.md")  # .sort()
+  originDirs = filesFromRegex(config["luna16paths"]["origins"])
+  spacingDirs = filesFromRegex(config["luna16paths"]["spacing"])
+  imDirs = filesFromRegex(config["luna16paths"]["drrs"])
+  patientIDs = matchesFromRegex(config["luna16paths"]["origins"])
 
-  patientIDs = [i.split("/")[-1].replace(".png", "")[-4:] for i in imDirs]
-  landmarkDirs = glob(landmarkDir + "/allLandmarks*.csv")
+  # patientIDs = [i.split("/")[-1].replace(".png", "")[-4:] for i in originDirs]
+  # landmarkDirs = glob(landmarkDir + "/allLandmarks*.csv")
+  landmarkDirs = filesFromRegex(config["luna16paths"]["landmarks"])
   lmIDs = [i.split("/")[-1].split("andmarks")[1][:4] for i in landmarkDirs]
   landmarkDirsOrig = glob("landmarks/manual-jw/landmarks*.csv")
   landmarkDirs.sort()
   landmarkDirsOrig.sort()
+
   if (
     len(imDirs) == 0
     or len(originDirs) == 0
@@ -408,13 +437,12 @@ if __name__ == "__main__":
   # transDirs_all = glob( "savedPointClouds/allLandmarks/"
   #                             +"transformParams_case*"
   #                             +"_m_"+shape+".dat")
+
   # -remove scans without landmarks from DRR dirs
   missing = []
   missingID = []
-
   delInd = []
-  for i, imD in enumerate(imDirs):
-    currID = imD.split(".")[-2][-4:]
+  for i, currID in enumerate(patientIDs):
     if currID not in lmIDs:
       delInd.append(i)
 
@@ -425,6 +453,7 @@ if __name__ == "__main__":
     patientIDs.pop(dId)
   missing = []
   missingID = []
+  # exit()
   # for p, pID in enumerate(patientIDs):
   #   if pID not in imDirs:
   #     missing.append(p)

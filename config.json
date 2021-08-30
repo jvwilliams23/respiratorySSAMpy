@@ -1,0 +1,16 @@
+{
+  // configuration for CNN training
+  // file must be read with hjson 'pip install hjson', or remove comments
+  "luna16paths" :
+  {
+    //  training data images
+    "drrs" : "DRRs/luna16/..../drr-....-frontal.png",
+    "drrs_left" : "DRRs/luna16/..../drr-....-lateral-left.png",
+    "drrs_right" : "DRRs/luna16/..../drr-....-lateral-right.png",
+    "spacing" : "DRRs/luna16/..../drr-spacing-.....md",
+    "origins" : "DRRs/luna16/origins/drr-origins-.....md",
+    // training data labelmaps
+    "landmarks" : "allLandmarks/allLandmarks.....csv",
+  },
+}
+
