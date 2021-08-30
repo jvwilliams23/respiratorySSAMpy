@@ -133,7 +133,7 @@ class RespiratorySAM:
     elif origin.ndim == 1:
       xCoords = (
         origin[0]
-        + np.meshgrid(xBase, np.ones(spacing[0].size))[0].T * spacing[axes[0]]
+        + np.meshgrid(xBase, np.ones(spacing[0].size))[0].T * spacing[0]
       )
       yCoords = (
         origin[1]
@@ -180,7 +180,6 @@ class RespiratorySAM:
         density: (coords) array of grey value for each landmarks
     """
     # -use argmin to find nearest pixel neighboring a point
-
     nearestX = np.argmin(abs(lm[:, 0] - imgCoords[:, 0].reshape(-1, 1)), axis=0)
     nearestZ = np.argmin(abs(lm[:, 2] - imgCoords[:, 1].reshape(-1, 1)), axis=0)
 

@@ -54,6 +54,8 @@ class RespiratoryReconstructSSAM:
     density=None,
     img=None,
     imgCoords=None,
+    imgCoords_all=None,
+    imgCoords_axes=[0,2],
     model=None,
     modeNum=None,
     epochs=200,
@@ -93,6 +95,9 @@ class RespiratoryReconstructSSAM:
     # -appearance model inputs
     self.density = density  # -landmark densities
 
+    # number of images used for reconstruction (assumes img shape = 500 x 500)
+    self.number_of_imgs = max(np.sum(img.shape)-1000,1)
+
     """
     # self.img = ssam.sam.normaliseTestImageDensity(img)
     # self.imgCoords = ssam.sam.drrArrToRealWorld(img,
@@ -103,22 +108,20 @@ class RespiratoryReconstructSSAM:
     """
     # format x-ray for image enhancement
     self.img = copy(img)  # -XR image array
-    scaler = MinMaxScaler()
-    scaler.fit(img)
-    img = scaler.transform(img)
+    img = self.rescaleProjection(img)
     img *= 0.999  # avoid floating point error in scalar causing img > 1
     # img_filt = utils.bilateralfilter(img, 10)
     # if img_filt.max()>1:
     #   img_filt = img_filt/img_filt.max()
     img_local = utils.localNormalisation(img, 20)
-    scaler = MinMaxScaler()
-    scaler.fit(img_local)
-    img_local = scaler.transform(img_local)
+    img_local = self.rescaleProjection(img_local)
     self.img_local = np.round(img_local, 4)
     print(self.img_local.min(), self.img_local.max())
-    self.imgGrad = rank.gradient(self.img_local, disk(5)) / 255
-    print(self.imgGrad.min(), self.imgGrad.max())
+    # self.imgGrad = rank.gradient(self.img_local, disk(5)) / 255
+    # print(self.imgGrad.min(), self.imgGrad.max())
     self.imgCoords = imgCoords  # -X and Z coords of X-ray pixels
+    self.imgCoords_all = imgCoords_all
+    self.imgCoords_axes = imgCoords_axes
     self.alignTerm = xRay.mean(
       axis=0
     )  # -needed for coarse alignment coord frame
@@ -142,25 +145,58 @@ class RespiratoryReconstructSSAM:
       self.b = np.zeros(modeNum)
 
       for k in model.keys():
-        # -parameters
+        print(k)
+        # get shape for reshaping 
+        if self.density.ndim == 3:
+          number_of_features = len(shape[k][0]) + len(self.density[0][0])
+        else:
+          number_of_features = len(shape[k][0]) + 1 # one value for density
         # -shape model components only
-        self.model_s[k] = self.filterModelShapeOnly(self.model[k][:modeNum])
+        self.model_s[k] = self.filterModelShapeOnly(self.model[k][:modeNum], number_of_features)
         # -gray-value model components only
-        self.model_g[k] = self.filterModelDensityOnly(self.model[k][:modeNum])
+        self.model_g[k] = self.filterModelDensityOnly(self.model[k][:modeNum], number_of_features)
 
       self.meanScaled = self.stackShapeAndDensity(
         self.scaleShape(shape["ALL"]), self.density.mean(axis=0)
       )
     else:
+      # get shape for reshaping 
+      if self.density.ndim == 3:
+        number_of_features = len(shape[0]) + len(self.density[0])
+      else:
+        number_of_features = len(shape[0]) + 1 # one value for density
       # -parameters
       self.b = np.zeros(modeNum)
       # -shape model components only
-      self.model_s = self.filterModelShapeOnly(self.model[:modeNum])
+      self.model_s = self.filterModelShapeOnly(self.model[:modeNum], number_of_features)
       # -gray-value model components only
-      self.model_g = self.filterModelDensityOnly(self.model[:modeNum])
+      self.model_g = self.filterModelDensityOnly(self.model[:modeNum], number_of_features)
       self.meanScaled = self.stackShapeAndDensity(
         self.scaleShape(shape), self.density.mean(axis=0)
       )
+
+  def rescaleProjection(self, img):
+    """
+    Set pixel value to [0:1] for a single or multiple projections.
+    
+    Parameter
+    ---------
+    image or series of images (np.ndarray, (500, 500), or (N, 500,500))
+
+    Return
+    ------
+    Same array, bounded to a range of [0:1]
+    """
+    if img.ndim == 3:
+      for i, img_proj in enumerate(img):
+        scaler = MinMaxScaler()
+        scaler.fit(img_proj)
+        img[i] = scaler.transform(img_proj)
+    elif img.ndim == 2:
+      scaler = MinMaxScaler()
+      scaler.fit(img)
+      img = scaler.transform(img)
+    return img
 
   def objFuncAirway(self, pose, scale=None, b=None):
     # -call initialised variables from __init__
@@ -211,9 +247,9 @@ class RespiratoryReconstructSSAM:
     #                         | (all_morphed[:,0]<self.imgCoords[:,0].min())
     #                         )
     outside_bounds = np.any(
-      (all_morphed[:, 2] < self.imgCoords[:, 1].min())
-      | (all_morphed[:, 0] > self.imgCoords[:, 0].max())
-      | (all_morphed[:, 0] < self.imgCoords[:, 0].min())
+      (all_morphed[:, 2] < self.imgCoords_all[:, 2].min())
+      | (all_morphed[:, 0] > self.imgCoords_all[:, 0].max())
+      | (all_morphed[:, 0] < self.imgCoords_all[:, 0].min())
     )
 
     self.scale = scale  # -set globally to call in fitTerm
@@ -226,15 +262,25 @@ class RespiratoryReconstructSSAM:
       lobe_morphed[lobe] = all_morphed[self.lmOrder[lobe]]
     fit = self.fitTerm(xRay, lobe_morphed, shapenorms)
 
-    density_t = self.getDensity(all_morphed, self.img, self.imgCoords)
+    if self.number_of_imgs > 1:
+      density_t = [None]*self.number_of_imgs
+      for i in range(0, self.number_of_imgs):
+        density_t[i] = self.getDensity(all_morphed, self.img[0], self.imgCoords_all[self.imgCoords_axes[i]])
+      # convert list to array 
+      # change from shape N_imgs, N_lms -> N_lms, N_imgs 
+      density_t  = np.array(density_t).T
+    else:
+      density_t = self.getDensity(all_morphed, self.img, self.imgCoords).reshape(-1,1)
+
+    print(all_morphed.shape, density_t.shape)
     # -TODO - TEST WITH modelled density instead of target?
     shapeIn = self.stackShapeAndDensity(self.scaleShape(all_morphed), density_t)
     # prior = np.sum(abs(b)/self.variance)
     prior = self.priorTerm(shapeIn, self.meanScaled)
 
     densityFit = self.densityLoss(
-      density_t,
-      self.density.mean(axis=0),
+      density_t.reshape(-1),
+      self.density.mean(axis=0).reshape(-1),
       self.model_g["ALL"][: len(self.b)],
       self.b,
     )
@@ -242,26 +288,31 @@ class RespiratoryReconstructSSAM:
     print("\tprior loss", prior)  # round(prior,4))
     # self.c_edge = 0.2
     tallest_pt = airway_morphed[np.argmax(airway_morphed[:, 2])]
-    if self.c_grad != 0.0:
-      gradFit = self.gradientTerm(airway_morphed, self.imgGrad, self.imgCoords)
+    # if self.c_grad != 0.0:
+    #   gradFit = self.gradientTerm(airway_morphed, self.imgGrad, self.imgCoords)
 
     top_dist = 1.0 - np.exp(
-      -1.0 * abs(tallest_pt[2] - self.imgCoords[:, 1].max()) / 5.0
+      -1.0 * abs(tallest_pt[2] - self.imgCoords_all[:, 2].max()) / 5.0
     )
     # top_dist = abs(tallest_pt[2]-self.imgCoords[:,1].max())
 
     E = (
       (self.c_prior * prior) + (self.c_dense * densityFit) + (self.c_edge * fit)
     )
-    if self.c_grad != 0.0:
-      E += self.c_grad * gradFit
-    E += top_dist * 1.0
+    E = (
+      (self.c_edge * fit)
+    )
+    # if self.c_grad != 0.0:
+    #   E += self.c_grad * gradFit
+    # E += top_dist * 1.0
+    # E += loss_anatomicalShadow
     if not self.quiet:
       print("top dist", top_dist)
+      print('anatomical shadow and top dist off')
     if outside_bounds:
       if not self.quiet:
         print("OUTSIDE OF BOUNDS")
-      E += 0.25
+      # E += 0.25
       # return 2 # hard coded, assuming 2 is a large value for loss
     # if self.optIter > 1:
     loss_anatomicalShadow = self.c_anatomical * self.anatomicalShadow(
@@ -272,11 +323,13 @@ class RespiratoryReconstructSSAM:
       kernel_distance=self.kernel_distance,
       kernel_radius=self.kernel_radius,
     )
-    E += loss_anatomicalShadow
     print("\ttotal loss", E)
 
     if self.optIter % 250 == 0 and not self.quiet:
-      self.overlayAirwayOnXR(self.img, all_morphed, scale, pose)
+      if self.number_of_imgs == 1:
+        self.overlayAirwayOnXR(self.img, all_morphed, scale, pose)
+      elif self.number_of_imgs >= 2:
+        self.overlayAirwayOnXR_multipleimgs(self.img, all_morphed, scale, pose)
       # exit()
     # if np.isnan(E):
     #   return 2
@@ -465,12 +518,12 @@ class RespiratoryReconstructSSAM:
     """
     Inputs:
             shape: array (lm x 3)
-            density: array (lm x 1)
-    Outputs: array(lm x 4)
+            density: array (lm x nproj)
+    Outputs: array(lm x 3+nproj)
     """
-    return np.hstack((shape, density[np.newaxis].T))
+    return np.hstack((shape, density))
 
-  def filterModelShapeOnly(self, model):
+  def filterModelShapeOnly(self, model, number_of_features=4):
     """
     Return model without density in columns.
     Input 2D array, shape = ( nFeature, 4n )
@@ -478,23 +531,29 @@ class RespiratoryReconstructSSAM:
     where n = num landmarks
     """
     # no appearance params
-    model_noApp = model.reshape(model.shape[0], -1, 4)
-    return model_noApp[:, :, :-1].reshape(
-      model.shape[0], -1
-    )  # -reshape to 2D array
+    model_as_columns = model.reshape(model.shape[0], -1, number_of_features)
+    number_of_appearances_cols = number_of_features - 3
+    # slice to remove columns representing appearance/density
+    model_noApp = model_as_columns[:,:,:-number_of_appearances_cols]
+    print("model_noApp.shape", model_noApp.shape)
+    # -reshape to 2D array
+    return model_noApp.reshape(model.shape[0], -1)
 
-  def filterModelDensityOnly(self, model):
+  def filterModelDensityOnly(self, model, number_of_features=4):
     """
     Return model without shape in columns.
     Input 2D array, shape = ( nFeature, 4n )
     Return 2D array, shape = ( nFeature, n )
     where n = num landmarks
     """
-    # no shape params
-    model_noSh = model.reshape(model.shape[0], -1, 4)
-    return model_noSh[:, :, -1].reshape(
-      model.shape[0], -1
-    )  # -reshape to 2D array
+    # no appearance params
+    model_as_columns = model.reshape(model.shape[0], -1, number_of_features)
+    number_of_appearances_cols = number_of_features - 3
+    # slice to remove columns representing appearance/density
+    model_no_shape = model_as_columns[:,:,-number_of_appearances_cols:]
+    # -reshape to 2D array
+    print("model_no_shape.shape", model_no_shape.shape)
+    return model_no_shape.reshape(model.shape[0], -1)
 
   def normaliseDist(self, dist):
     """
@@ -766,6 +825,47 @@ class RespiratoryReconstructSSAM:
       bbox_inches="tight",
       pad_inches=0,
     )
+    # exit()
+    return None
+
+  def overlayAirwayOnXR_multipleimgs(self, img, coords, scale, pos, tag=""):
+    for i, im_i in enumerate(img):
+      extent = [
+        -im_i.shape[1] / 2.0 * self.spacing_xr[self.imgCoords_axes[i][0]],
+        im_i.shape[1] / 2.0 * self.spacing_xr[self.imgCoords_axes[i][0]],
+        -im_i.shape[0] / 2.0 * self.spacing_xr[self.imgCoords_axes[i][1]],
+        im_i.shape[0] / 2.0 * self.spacing_xr[self.imgCoords_axes[i][1]],
+      ]
+      plt.close()
+      plt.imshow(im_i, cmap="gray", extent=extent)
+      # plt.scatter(
+      #   self.xRay[:, 0], self.xRay[:, 1], s=4, c="black"
+      # ) 
+      for key in self.projLM_ID.keys():
+        # if key == 'RML':
+        #   continue
+        # else:
+        projLM_key = self.projLM_ID[key]
+        # print(key, projLM_key)
+        plt.scatter(
+          # coords[self.lmOrder[key]][projLM_key, 0],
+          # coords[self.lmOrder[key]][projLM_key, 2],
+          coords[self.lmOrder[key]][:, self.imgCoords_axes[i][0]],
+          coords[self.lmOrder[key]][:, self.imgCoords_axes[i][1]],
+          s=8,
+          c="yellow",
+        )
+      # formatting to remove whitespace!
+      plt.gca().set_axis_off()
+      plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
+      plt.margins(0, 0)
+      plt.gca().xaxis.set_major_locator(plt.NullLocator())
+      plt.gca().yaxis.set_major_locator(plt.NullLocator())
+      plt.savefig(
+        "images/reconstruction/debug/img{}-iter{}{}.png".format(i, str(self.optIter), tag),
+        bbox_inches="tight",
+        pad_inches=0,
+      )
     # exit()
     return None
 

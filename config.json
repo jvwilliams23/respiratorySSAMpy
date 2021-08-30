@@ -11,6 +11,12 @@
     "origins" : "DRRs/luna16/origins/drr-origins-.....md",
     // training data labelmaps
     "landmarks" : "allLandmarks/allLandmarks.....csv",
+    // "img_axes": [[0,2],[1,2]],
   },
+  "training":
+  {
+    "img_axes" : [[0,2]],
+    "num_imgs": 1,
+  }
 }
 

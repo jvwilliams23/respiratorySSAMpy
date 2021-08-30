@@ -458,6 +458,8 @@ if __name__ == "__main__":
     originDirs.pop(dId)
     spacingDirs.pop(dId)
     imDirs.pop(dId)
+    imDirs_left.pop(dId)
+    imDirs_right.pop(dId)
     patientIDs.pop(dId)
   missing = []
   missingID = []
@@ -530,6 +532,17 @@ if __name__ == "__main__":
     2,
     0,
   )
+  drrArr_left = np.rollaxis(
+    # np.dstack([utils.loadXR(o)[:-2,:-2][::imgSpaceCoeff,::imgSpaceCoeff]
+    np.dstack(
+      [utils.loadXR(o)[::imgSpaceCoeff, ::imgSpaceCoeff] for o in imDirs_left]
+    ),
+    2,
+    0,
+  )
+  if config['training']['num_imgs'] == 2:
+    # join so array is shape Npatients, Nimages, Npixels_x, Npixels_y
+    drrArr = np.stack((drrArr, drrArr_left),axis=1)
 
   # offset centered coordinates to same reference frame as CT data
   carinaArr = nodalCoordsOrig[:, 1]
@@ -611,7 +624,15 @@ if __name__ == "__main__":
   ssam = RespiratorySSAM(
     landmarks, lmProj, drrArr, origin, spacing, train_size=landmarks.shape[0]
   )
-  density = ssam.xg_train[:, :, -1]
+  if testIm[0].ndim == 3:
+    # if multiple images for reconstruction, get density for each one 
+    # which is last N columns from xg_train
+    density = ssam.xg_train[:,:,-testIm[0].shape[0]:]
+    number_of_features = 3 + testIm[0].shape[0] # 3 = num coordinates
+  else:
+    density = ssam.xg_train[:,:,-1].reshape(len(landmarks),-1,1)
+    number_of_features = 4 # three coordinates, and a density value
+
   model = ssam.phi_sg
   meanArr = np.mean(landmarks, axis=0)
 
@@ -632,7 +653,7 @@ if __name__ == "__main__":
   modelDict["ALL"] = model
   for shape in shapes:
     inputCoords[shape] = copy(meanArr[lmOrder[shape]])
-    modelDict[shape] = model.reshape(len(landmarks), -1, 4)[:, lmOrder[shape]]
+    modelDict[shape] = model.reshape(len(landmarks), -1, number_of_features)[:, lmOrder[shape]]
 
   mean_mesh = dict.fromkeys(shapes)
   faces = dict.fromkeys(shapes)  # faces of mean surface for each shape
@@ -716,7 +737,6 @@ if __name__ == "__main__":
     mean_mesh[key] = v.load(mean_shape_file).computeNormals()
     # mesh_template_lms[key] =
 
-  # exit()
   # reorder unstructured stl file to be coherent w/ model and landmarks
   # extract mesh data (coords, normals and faces)
   for key in shapes:
@@ -757,18 +777,13 @@ if __name__ == "__main__":
       tImg.copy()
     )  # ssam.imgsN[caseIndex] #-load image directly from training data
     img = ssam.sam.normaliseTestImageDensity(img)  # normalise "unseen" image
+    # index 0 as output is stacked
     imgCoords = ssam.sam.drrArrToRealWorld(
-      img, np.zeros(3), tSpace  # [spacing_xr[0]]*3
-    )[
-      0
-    ]  # index 0 as output is stacked
-    spacing_xr = (
-      tSpace.copy()
-    )  # *imgSpaceCoeff #-no need to multiply as already done earlier
+      img, np.zeros(3), tSpace
+    )[0]  
+    spacing_xr = tSpace.copy()  
     # center image coords, so in the same coord system as edges
-    imgCoords -= np.mean(
-      imgCoords, axis=0
-    )  # np.array([250,250])#*spacing_xr[[0,2]]
+    imgCoords -= np.mean(imgCoords, axis=0) 
 
     # for plotting image in same ref frame as the edges
     extent = [
@@ -779,14 +794,9 @@ if __name__ == "__main__":
     ]
     extent_tmp = np.array(extent)
 
-    # remove old optimisation visualisations
-    # remFiles = glob("images/xRayRecon/nevergrad/*.png")
-    # for file in remFiles:
-    #     remove(file)
     # edge points in units of pixels from edge map
     xrayEdgeFile = "{}/{}/drr-outline-{}.csv".format(drrDir, tID, tID)
     edgePoints = np.loadtxt(xrayEdgeFile, delimiter=",")
-    # edgePoints_tmp = edgePoints#*512/500
     # edge points in units of mm
     # for some reason spacing_xr[[0,1]] gives correct height of edge map?
     edgePoints_mm = edgePoints
@@ -821,6 +831,8 @@ if __name__ == "__main__":
       img=img,
       # imgSpacing=spacing_xr,
       imgCoords=imgCoords,
+      imgCoords_all=ssam.sam.imgCoords_all,
+      imgCoords_axes=config['training']['img_axes'],
       density=density,
       model=modelDict,
       modeNum=numModes,

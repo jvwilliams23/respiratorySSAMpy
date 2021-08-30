@@ -41,7 +41,6 @@ from vedo import *
 
 # plot graphs for compactness, specificity etc
 # from ssmPlot import *
-# from userUtils import cm2inch, doPCA, trainTestSplit
 import userUtils as utils
 from respiratorySAM import RespiratorySAM
 from respiratorySSM import RespiratorySSM
@@ -55,7 +54,6 @@ class RespiratorySSAM:
     imgs,
     imgsOrigin,
     imgsSpacing,
-    testSplit="trainTestSplit",
     train_size=0.9,
   ):
     # check all input datasets have same number of samples
@@ -67,7 +65,6 @@ class RespiratorySSAM:
     ), "non-matching dataset size"
     # -import functions
     self.doPCA = utils.doPCA
-    self.trainTestSplit = utils.trainTestSplit
 
     # -initialise input variables
     self.lm = lm  # centered landmarks from GAMEs
@@ -82,8 +79,10 @@ class RespiratorySSAM:
     self.x_vec_scale = self.x_vec - self.x_vec.mean(axis=1)[:, np.newaxis]
     self.x_vec_scale /= self.x_vec_scale.std(axis=1)[:, np.newaxis]
 
-    # -shape modelling classes
+    # shape modelling classes
     self.ssm = RespiratorySSM(lm)
+    # appearance model classes. 
+    # if two images are provided, stack the landmarked density at each
     if imgs.ndim == 3:
       self.sam = RespiratorySAM(lm_ct, imgs, imgsOrigin, imgsSpacing)
       self.density = self.sam.density
@@ -141,7 +140,6 @@ class RespiratorySSAM:
     Return: PCA object
     """
     printc("Building SSAM", c="white")
-    # self.xg_train = self.trainTestSplit(xg_vec, self.train_size)[0]
     self.xg_train = self.xg_vec
     pca = self.doPCA(self.xg_train, 0.95)[0]
     return pca
@@ -272,7 +270,6 @@ if __name__ == "__main__":
     drrArr,
     origin,
     spacing,
-    "trainTestSplit",
     train_size=trainSplit,
   )
   drrPos = ssam.imgCoords
