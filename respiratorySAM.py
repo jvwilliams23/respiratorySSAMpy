@@ -67,9 +67,11 @@ class RespiratorySAM:
     self.lm = lm
     self.imgs = imgs
     self.imgsN = self.normaliseImageDensity(self.imgs)
-    self.imgCoords = self.drrArrToRealWorld(
-      self.imgs, imgsOrigin, imgsSpacing, axes
+    self.imgCoords_all = self.drrArrToRealWorld(
+      self.imgs, imgsOrigin, imgsSpacing
     )
+    # filter selected axes (x,z for frontal or y,z for lateral)
+    self.imgCoords = self.imgCoords_all[:, :, axes]
 
     # test landmarks are within image
     # self.testLandmarkAndImageBounds(self.lm[:,:,[0,2]], self.imgCoords)
@@ -78,18 +80,11 @@ class RespiratorySAM:
       self.lm, self.imgs, self.imgCoords
     )
 
-    # self.density = (self.density_base
-    #                 -self.density_base.mean(axis=0)[:,np.newaxis]
-    #                 )
-    # self.density  = self.density/self.density_base.std(axis=0)[:,np.newaxis]
     self.density = (
       self.density_base - self.density_base.mean(axis=1)[:, np.newaxis]
     )
     self.density = self.density / self.density.std(axis=1)[:, np.newaxis]
     self.g_train = self.density
-
-    # self.g_train, self.g_test = self.trainTestSplit(self.density,
-    #                                                 train_size)
 
     if __name__ == "__main__":
       self.pca, k_95 = self.doPCA(
@@ -110,41 +105,54 @@ class RespiratorySAM:
   def landmarksToRealWorld(self, lm, trans):
     return lm + trans
 
-  def drrArrToRealWorld(self, img, origin, spacing, axes=[0, 2]):
+  def drrArrToRealWorld(self, img, origin, spacing):
     """
     Set bottom left coordinate to CT origin, and assign real world coord to DRR
     """
+    # images all square so should have same shape and can be initialised same way
     xCoords = np.zeros((origin.shape[0], img.shape[-2]))
+    yCoords = np.zeros((origin.shape[0], img.shape[-2]))
     zCoords = np.zeros((origin.shape[0], img.shape[-1]))
 
     xBase = np.linspace(0, img.shape[-2], img.shape[-2])
+    yBase = np.linspace(0, img.shape[-2], img.shape[-2])
     zBase = np.linspace(0, img.shape[-1], img.shape[-1])
     if origin.ndim == 2:
       xCoords = (
-        origin[:, axes[0]]
-        + np.meshgrid(xBase, np.ones(spacing[:, axes[0]].size))[0].T
-        * spacing[:, axes[0]]
+        origin[:, 0]
+        + np.meshgrid(xBase, np.ones(spacing[:, 0].size))[0].T * spacing[:, 0]
+      )
+      yCoords = (
+        origin[:, 1]
+        + np.meshgrid(yBase, np.ones(spacing[:, 1].size))[0].T * spacing[:, 1]
       )
       zCoords = (
-        origin[:, axes[1]]
-        + np.meshgrid(zBase, np.ones(spacing[:, axes[1]].size))[0].T
-        * spacing[:, axes[1]]
+        origin[:, 2]
+        + np.meshgrid(zBase, np.ones(spacing[:, 2].size))[0].T * spacing[:, 2]
       )
     elif origin.ndim == 1:
       xCoords = (
-        origin[axes[0]]
-        + np.meshgrid(xBase, np.ones(spacing[axes[0]].size))[0].T
-        * spacing[axes[0]]
+        origin[0]
+        + np.meshgrid(xBase, np.ones(spacing[0].size))[0].T * spacing[axes[0]]
+      )
+      yCoords = (
+        origin[1]
+        + np.meshgrid(xBase, np.ones(spacing[1].size))[0].T * spacing[1]
       )
       zCoords = (
-        origin[axes[1]]
-        + np.meshgrid(zBase, np.ones(spacing[axes[1]].size))[0].T
-        * spacing[axes[1]]
+        origin[2]
+        + np.meshgrid(zBase, np.ones(spacing[2].size))[0].T * spacing[2]
       )
     else:
       printc("unexpected origin dimensions in SAM.drrArrToRealWorld")
 
-    return np.dstack((np.swapaxes(xCoords, 0, 1), np.swapaxes(zCoords, 0, 1)))
+    return np.dstack(
+      (
+        np.swapaxes(xCoords, 0, 1),
+        np.swapaxes(yCoords, 0, 1),
+        np.swapaxes(zCoords, 0, 1),
+      )
+    )
 
   # def pixelisePointCloud(lm, density, imgCoords):
   #   img = np.zeros((500,500))
