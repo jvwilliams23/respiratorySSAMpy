@@ -68,6 +68,7 @@ class RespiratorySSAM:
 
     # -initialise input variables
     self.lm = lm  # centered landmarks from GAMEs
+    self.lm -= self.lm.mean()
     self.lm_ct = lm_ct  # landmarks transformed to same coordinate frame as CT
     self.train_size = train_size
 
