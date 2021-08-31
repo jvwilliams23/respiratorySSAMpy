@@ -122,9 +122,6 @@ class RespiratoryReconstructSSAM:
     self.imgCoords = imgCoords  # -X and Z coords of X-ray pixels
     self.imgCoords_all = imgCoords_all
     self.imgCoords_axes = imgCoords_axes
-    self.alignTerm = xRay.mean(
-      axis=0
-    )  # -needed for coarse alignment coord frame
 
     self.optIter = 0
     self.optIterSuc = 0
@@ -265,7 +262,7 @@ class RespiratoryReconstructSSAM:
     if self.number_of_imgs > 1:
       density_t = [None]*self.number_of_imgs
       for i in range(0, self.number_of_imgs):
-        density_t[i] = self.getDensity(all_morphed, self.img[0], self.imgCoords_all[self.imgCoords_axes[i]])
+        density_t[i] = self.getDensity(all_morphed, self.img[i], self.imgCoords_all[self.imgCoords_axes[i]])
       # convert list to array 
       # change from shape N_imgs, N_lms -> N_lms, N_imgs 
       density_t  = np.array(density_t).T
@@ -727,38 +724,42 @@ class RespiratoryReconstructSSAM:
 
   def fitTerm(self, xRay, shapeDict, pointNorms3DDict):
 
-    v = 5.0  # distance weighting factor
-    n = 0  # initialise number of points
-    thetaList = []  # * len(shapeDict.keys())
+    scaler = 5.0  # distance weighting factor
+    num_points = 0  # initialise number of points
+    fit_list = []  # * len(shapeDict.keys())
+    n_proj = self.number_of_imgs
+    for img_index, axes in zip(range(0, n_proj), self.imgCoords_axes):
+      if n_proj == 1:
+        projLM_ID_i = self.projLM_ID
+        xRay_i = xRay.copy()
+      else:
+        projLM_ID_i = self.projLM_ID_multipleproj[img_index]
+        xRay_i = xRay[img_index]
+      for k, key in enumerate(self.lobes):
+        # -get only fd term for RML
+        if key != "RML":
+          shape = shapeDict[key][projLM_ID_i[key]][:, axes]
+          num_points += len(shape)
 
-    # plt.close()
-    # plt.plot(xRay[:,0], xRay[:,1], lw=0, marker="o", ms=2, c="black")
-
-    for k, key in enumerate(self.lobes):
-      # -get only fd term for RML
-      if key != "RML":
-
-        shape = shapeDict[key][self.projLM_ID[key]][:, [0, 2]]
-        # plt.scatter(shape[:,0], shape[:,1])
-        # pointNorms3D = pointNorms3DDict[key][self.projLM_ID[key]]
-        d_i = np.zeros(shape.shape[0])
-        n += len(shape)
-        if len(xRay.shape) > 2:  # -if xRay is a 3D array
-          n_proj = xRay.shape[2]
-        else:
-          n_proj = 1
-        theta = np.zeros(shape.shape[0])
-
-        # -get distance term (D_i)
-        distArr = cdist(shape, xRay)
-        d_i = np.min(distArr, axis=1)
-        D_i = np.exp(-d_i / v)
-        theta = abs(1 - D_i)
-
-        thetaList.append(np.sum(theta))
-    E_fit = (1 / (n * n_proj)) * np.sum(thetaList)
+          fit_list.append(self.fitLoss(shape, xRay_i, scaler))
+    E_fit = (1 / (num_points * n_proj)) * np.sum(fit_list)
 
     return E_fit
+
+  def normalisedDistance(self, shape1, shape2, scaler=5):
+    """
+    Find closest normalised distance between two point clouds
+    """
+    distArr = cdist(shape1, shape2)
+    closest_dist = np.min(distArr, axis=1)
+    return np.exp(-closest_dist / scaler)
+
+  def fitLoss(self, shape, xRay, scaler):
+    # -get distance term (D_i)
+    dist = self.normalisedDistance(shape, xRay, scaler)
+    fit_term_loss_i = abs(1 - dist)
+    return np.sum(fit_term_loss_i)
+
 
   def priorTerm(self, shape, meanShape):
     """
@@ -838,9 +839,9 @@ class RespiratoryReconstructSSAM:
       ]
       plt.close()
       plt.imshow(im_i, cmap="gray", extent=extent)
-      # plt.scatter(
-      #   self.xRay[:, 0], self.xRay[:, 1], s=4, c="black"
-      # ) 
+      plt.scatter(
+        self.xRay[i][:, 0], self.xRay[i][:, 1], s=4, c="black"
+      ) 
       for key in self.projLM_ID.keys():
         # if key == 'RML':
         #   continue
@@ -869,7 +870,7 @@ class RespiratoryReconstructSSAM:
     # exit()
     return None
 
-  def getProjectionLandmarks(self, faceIDs, faceNorms, points):
+  def getProjectionLandmarks(self, faceIDs, faceNorms, points, plane=1):
     """
     args:
         faceIDs array(num faces, 3): Each row has three IDs corresponding
@@ -903,8 +904,8 @@ class RespiratoryReconstructSSAM:
             """check if y normal for point has +ve and -ve components
             in the projection plane"""
             if (
-              np.min(faceNorms[shape][norms[pID]][:, 1]) < 0
-              and np.max(faceNorms[shape][norms[pID]][:, 1]) > 0
+              np.min(faceNorms[shape][norms[pID]][:, plane]) < 0
+              and np.max(faceNorms[shape][norms[pID]][:, plane]) > 0
             ):
               projectionLM[shape].append(points[shape][pID])
               projectionLM_ID[shape].append(pID)
@@ -914,7 +915,7 @@ class RespiratoryReconstructSSAM:
 
         projectionLM[shape] = np.array(projectionLM[shape])
         # -delete projection plane from coords
-        projectionLM[shape] = np.delete(projectionLM[shape], 1, axis=1)
+        projectionLM[shape] = np.delete(projectionLM[shape], plane, axis=1)
         projectionLM_ID[shape] = np.array(projectionLM_ID[shape])
     else:
       norms = []
@@ -932,8 +933,8 @@ class RespiratoryReconstructSSAM:
           """check if y normal for point has +ve and -ve components
           in the projection plane"""
           if (
-            np.min(faceNorms[norms[pID]][:, 1]) < 0
-            and np.max(faceNorms[norms[pID]][:, 1]) > 0
+            np.min(faceNorms[norms[pID]][:, plane]) < 0
+            and np.max(faceNorms[norms[pID]][:, plane]) > 0
           ):
             projectionLM.append(points[pID])
             projectionLM_ID.append(pID)
@@ -963,7 +964,7 @@ class RespiratoryReconstructSSAM:
       """
       projectionLM = np.array(projectionLM)
       # -delete projection plane from coords
-      projectionLM = np.delete(projectionLM, 1, axis=1)
+      projectionLM = np.delete(projectionLM, plane, axis=1)
       projectionLM_ID[shape] = np.array(projectionLM_ID[shape])
     return projectionLM, projectionLM_ID
 
