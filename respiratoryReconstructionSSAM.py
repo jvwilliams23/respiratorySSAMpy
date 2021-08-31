@@ -67,6 +67,8 @@ class RespiratoryReconstructSSAM:
     kernel_distance=27,  # 18,9
     kernel_radius=16,
     quiet=False,
+    img_names=["frontal"],
+    shapes_to_skip_fitting=["None"]
   ):  # 7):
 
     # tunable hyper-parameters
@@ -79,6 +81,8 @@ class RespiratoryReconstructSSAM:
     self.kernel_distance = kernel_distance
     self.kernel_radius = kernel_radius
     self.quiet = quiet
+    self.img_names = img_names
+    self.shapes_to_skip_fitting = shapes_to_skip_fitting
 
     self.lobes = ["RUL", "RML", "RLL", "LUL", "LLL"]
 
@@ -736,8 +740,9 @@ class RespiratoryReconstructSSAM:
         projLM_ID_i = self.projLM_ID_multipleproj[img_index]
         xRay_i = xRay[img_index]
       for k, key in enumerate(self.lobes):
-        # -get only fd term for RML
-        if key != "RML":
+        # skip certain lobes or sub-shapes for different images 
+        # as they may be non-visible 
+        if key not in self.shapes_to_skip_fitting[img_index]:
           shape = shapeDict[key][projLM_ID_i[key]][:, axes]
           num_points += len(shape)
 
@@ -846,13 +851,13 @@ class RespiratoryReconstructSSAM:
         # if key == 'RML':
         #   continue
         # else:
-        projLM_key = self.projLM_ID[key]
+        projLM_index = self.projLM_ID_multipleproj[i][key]
         # print(key, projLM_key)
         plt.scatter(
           # coords[self.lmOrder[key]][projLM_key, 0],
           # coords[self.lmOrder[key]][projLM_key, 2],
-          coords[self.lmOrder[key]][:, self.imgCoords_axes[i][0]],
-          coords[self.lmOrder[key]][:, self.imgCoords_axes[i][1]],
+          coords[self.lmOrder[key]][projLM_index, self.imgCoords_axes[i][0]],
+          coords[self.lmOrder[key]][projLM_index, self.imgCoords_axes[i][1]],
           s=8,
           c="yellow",
         )

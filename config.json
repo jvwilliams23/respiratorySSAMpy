@@ -11,12 +11,25 @@
     "origins" : "DRRs/luna16/origins/drr-origins-.....md",
     // training data labelmaps
     "landmarks" : "allLandmarks/allLandmarks.....csv",
-    // "img_axes": [[0,2],[1,2]],
+    "projLM_ID_file" : "allLandmarks/projectedMeanLandmarksID{}_multiproj{}.csv"
   },
   "training":
   {
-    "img_axes" : [[0,2]],
-    "num_imgs": 1,
+    // "img_axes" : [[0,2]],
+    // "num_imgs": 1,
+    "img_axes" : [[0,2],[1,2]],
+    "num_imgs": 2,
+    // string to describe + differentiate from images 
+    //    here we use the direction taken from
+    "img_names": ["frontal", "left"],
+    "shapes_to_skip_fit": [["RML"], ["RUL", "RML", "RLL"]],
+  },
+  "test-set":
+  {
+    // outline dirs
+    // "outlines" : ["DRRs/luna16/{}/drr-outline-{}.csv",],
+    "outlines" : ["DRRs/luna16/{}/drr-outline-{}.csv",
+                  "DRRs/luna16/{}/drr-outline-{}-lateral-left.csv"],
   }
 }
 
