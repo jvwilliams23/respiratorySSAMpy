@@ -9,3 +9,15 @@ run*.cmd
 *.o1*
 *.po1*
 log*
+images/
+all/
+segmentations/
+surfaces/
+unusedLMs/
+outline_compare/
+morphologicalAnalysis/
+DRRs/
+*/
+cmbbe*
+backup*
+
