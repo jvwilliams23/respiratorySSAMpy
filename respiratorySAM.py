@@ -239,7 +239,7 @@ class RespiratorySAM:
       density_im - density_im.mean(axis=(1, 2))[:, np.newaxis, np.newaxis]
     )
     densityN_im = (
-      densityN_im / density_im.std(axis=(1, 2))[:, np.newaxis, np.newaxis]
+      densityN_im / densityN_im.std(axis=(1, 2))[:, np.newaxis, np.newaxis]
     )
 
     # densityN_im = (density_im
@@ -255,7 +255,7 @@ class RespiratorySAM:
 
     #######-------UNSURE ABOUT WHICH AXIS TO USE
     densityN_im = density_im - density_im.mean()
-    densityN_im = densityN_im / density_im.std()
+    densityN_im /= densityN_im.std()
     # densityN_im = (density_im
     #                 -density_im.mean(axis=0)[np.newaxis,:]
     #                 )
