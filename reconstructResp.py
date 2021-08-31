@@ -277,6 +277,57 @@ def getShapeParameters(
   return shape_parameters
 
 
+def newProjLMs(
+  faces, meanNorms_face, surfCoords_mmOrig, surfCoords_mm, landmarks, plane=1
+):
+  """
+  Get new landmarks that have a normal partially facing towards and away
+  from the image. These are named 'projection' landmarks/'silhouette' landmarks
+
+  Parameters
+  ----------
+  faces (np.ndarray/list?? N,3): point indexes making up each face on surface
+  meanNorms_face : normal vectors for each point on face
+  surfCoords_mmOrig : vertex coordinates in CT space
+  surfCoords_mm : vertex coordinates in landmark space
+  plane : projected plane to find silhouette LMs in
+
+  """
+  # IF MESH TOO FINE, THIS CAN BE PROBLEMATIC!
+  projLM, projLM_ID = assam.getProjectionLandmarks(
+    faces, meanNorms_face, surfCoords_mmOrig, plane
+  )
+  projlm_base = copy(projLM)
+  projlmid_base = copy(projLM_ID)
+
+  if plane == 1:
+    projLM, projLM_ID = assam.deleteShadowedEdges(
+      surfCoords_mm,
+      projLM,
+      projLM_ID,
+    )
+  projlm_basenew = copy(projLM)
+  projlmid_basenew = copy(projLM_ID)
+
+  # reorder projected surface points to same order as landmarks
+  # print("number proj airway pts", len(assam.projLM_ID["Airway"]))
+  for key in shapes:
+    print("reordering projected landmarks for", key)
+    newProjIDs = []
+    newProjPos = []
+    # find closest surface point for each landmark
+    for p, point in enumerate(surfCoords_centred[key][projLM_ID[key]]):
+      dist = utils.euclideanDist(landmarks[key], point)
+      closest_lm_index = np.argmin(dist)
+      # prevent duplicating points
+      if closest_lm_index not in newProjIDs:
+        newProjIDs.append(closest_lm_index)
+        newProjPos.append(landmarks[key][closest_lm_index, [0, 2]])
+    projLM_ID[key] = copy(newProjIDs)
+    projLM[key] = copy(np.vstack(newProjPos))
+  return projLM, projLM_ID
+
+
 def getMeanGraph(
   caseIDs,
   landmarks,
