@@ -905,7 +905,7 @@ if __name__ == "__main__":
     # declare posterior shape model class
     assam = RespiratoryReconstructSSAM(
       shape=inputCoords,
-      xRay=edgePoints_mm,
+      xRay=edgePoints,
       lmOrder=lmOrder,
       normals=None,
       transform=carinaArr[t] * 0.0,
@@ -913,7 +913,7 @@ if __name__ == "__main__":
       # imgSpacing=spacing_xr,
       imgCoords=imgCoords,
       imgCoords_all=ssam.sam.imgCoords_all,
-      imgCoords_axes=config['training']['img_axes'],
+      imgCoords_axes=config["training"]["img_axes"],
       density=density,
       model=modelDict,
       modeNum=numModes,
@@ -924,6 +924,8 @@ if __name__ == "__main__":
       c_anatomical=c_anatomical,
       kernel_distance=kernel_distance,
       kernel_radius=kernel_radius,
+      img_names=config["training"]["img_names"],
+      shapes_to_skip_fitting=config["training"]["shapes_to_skip_fit"],
     )
     assam.spacing_xr = spacing_xr
     # import variables to class
