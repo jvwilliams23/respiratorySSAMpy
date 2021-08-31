@@ -846,21 +846,55 @@ if __name__ == "__main__":
     extent_tmp = np.array(extent)
 
     # edge points in units of pixels from edge map
-    xrayEdgeFile = "{}/{}/drr-outline-{}.csv".format(drrDir, tID, tID)
-    edgePoints = np.loadtxt(xrayEdgeFile, delimiter=",")
+    # xrayEdgeFile = "{}/{}/drr-outline-{}.csv".format(drrDir, tID, tID)
+    edgePoints = [None] * len(config["test-set"]["outlines"])
+    for f, file in enumerate(config["test-set"]["outlines"]):
+      file_re = config["test-set"]["outlines"][f].format(tID, tID)
+      print(file_re)
+      edgePoints[f] = np.loadtxt(file_re, delimiter=",")
+      edgePoints[f] = np.unique(edgePoints[f], axis=0)
+    # if only 1 x-ray given, change shape from list of 2D arrays to one 2D array
+    if len(edgePoints) == 1:
+      edgePoints = edgePoints[f]
+
     # edge points in units of mm
     # for some reason spacing_xr[[0,1]] gives correct height of edge map?
-    edgePoints_mm = edgePoints
-    edgePoints_mm = np.unique(edgePoints_mm, axis=0)
-    print("check height", edgePoints_mm[:, 1].max() - edgePoints_mm[:, 1].min())
-    print("check width", edgePoints_mm[:, 0].max() - edgePoints_mm[:, 0].min())
+    # print("check height", edgePoints[:, 1].max() - edgePoints[:, 1].min())
+    # print("check width", edgePoints[:, 0].max() - edgePoints[:, 0].min())
     if debug:
-      fig, ax = plt.subplots(2)
-      ax[0].imshow(img, cmap="gray", extent=extent)
-      ax[0].scatter(edgePoints[:, 0], edgePoints[:, 1], s=2)
-      ax[1].scatter(meanArr[:, 0], meanArr[:, 2], s=1, c="black")
-      ax[1].scatter(edgePoints[:, 0], edgePoints[:, 1], s=2, c="blue")
-      plt.show()
+      if config["training"]["num_imgs"] == 1:
+        fig, ax = plt.subplots(1, 2)
+        ax[0].imshow(img, cmap="gray", extent=extent)
+        ax[0].scatter(edgePoints[:, 0], edgePoints[:, 1], s=2)
+        ax[1].scatter(meanArr[:, 0], meanArr[:, 2], s=1, c="black")
+        ax[1].scatter(edgePoints[:, 0], edgePoints[:, 1], s=2, c="blue")
+        plt.show()
+      else:
+        for i in range(0, config["training"]["num_imgs"]):
+          extent = [
+            -img[i].shape[1]
+            / 2.0
+            * spacing_xr[config["training"]["img_axes"][i][0]],
+            img[i].shape[1]
+            / 2.0
+            * spacing_xr[config["training"]["img_axes"][i][0]],
+            -img[i].shape[0]
+            / 2.0
+            * spacing_xr[config["training"]["img_axes"][i][1]],
+            img[i].shape[0]
+            / 2.0
+            * spacing_xr[config["training"]["img_axes"][i][1]],
+          ]
+          fig, ax = plt.subplots(1, 2)
+          ax[0].imshow(img[i], cmap="gray", extent=extent)
+          ax[0].scatter(edgePoints[i][:, 0], edgePoints[i][:, 1], s=2)
+          ax[1].scatter(
+            meanArr[:, config["training"]["img_axes"][i][0]],
+            meanArr[:, config["training"]["img_axes"][i][1]],
+            s=1,
+            c="black",
+          )
+          plt.show()
 
     # # fig, ax = plt.subplots(2)
     # # ax[1].scatter(meanArr[:,0], meanArr[:,2],s=1, c="black")
@@ -911,68 +945,57 @@ if __name__ == "__main__":
     new_projection = (
       args.newProjLM
     )  # False # True if given new mesh to get projection landmarks.
+
     if len(glob(projLM_file.format("*"))) == 0 or new_projection:
-      # IF MESH TOO FINE, THIS CAN BE PROBLEMATIC!
-      assam.projLM, assam.projLM_ID = assam.getProjectionLandmarks(
-        faces, meanNorms_face, surfCoords_mmOrig
+      projLM, projLM_ID = newProjLMs(
+        faces, meanNorms_face, surfCoords_mmOrig, surfCoords_mm, inputCoords
       )
-      projlm_base = copy(assam.projLM)
-      projlmid_base = copy(assam.projLM_ID)
-
-      assam.projLM, assam.projLM_ID = assam.deleteShadowedEdges(
-        surfCoords_mm,
-        assam.projLM,
-        assam.projLM_ID,
-      )
-      projlm_basenew = copy(assam.projLM)
-      projlmid_basenew = copy(assam.projLM_ID)
-
-      # reorder projected surface points to same order as landmarks
-      print("number proj airway pts", len(assam.projLM_ID["Airway"]))
-      for key in shapes:
-        print("reordering projected landmarks for", key)
-        newProjIDs = []
-        newProjPos = []
-        # find closest surface point for each landmark
-        for p, point in enumerate(
-          surfCoords_centred[key][assam.projLM_ID[key]]
-        ):
-          dist = utils.euclideanDist(inputCoords[key], point)
-          closest_lm_index = np.argmin(dist)
-          # prevent duplicating points
-          if closest_lm_index not in newProjIDs:
-            newProjIDs.append(closest_lm_index)
-            newProjPos.append(inputCoords[key][closest_lm_index, [0, 2]])
-        assam.projLM_ID[key] = copy(newProjIDs)
-        assam.projLM[key] = copy(np.vstack(newProjPos))
-        # for p, point in enumerate(assam.projLM_ID[key]):
-        #   if np.isin(surfToLMorder[key], point).sum() > 0: #np.isin(point, surfToLMorder):
-        #     mappedLM = np.argwhere(np.isin(surfToLMorder[key], point))
-        #     assam.projLM_ID[key][p] = mappedLM[0][0]
-        #   else:
-        #     delInd.append(p)
-        # print('finished reordering projected landmarks')
-        # delete projected surfPoints which were not included in mapping to LM space
-        # assam.projLM_ID[key] = np.delete(assam.projLM_ID[key], delInd)
-        # assam.projLM[key] = np.delete(assam.projLM[key], delInd, axis=0)
-
-        print("number of landmarks for", key, "is", len(assam.projLM_ID[key]))
+      # write new projection coords to text file
+      for key in projLM.keys():
         np.savetxt(
           projLM_file.format(key),
-          assam.projLM[key],
+          projLM[key],
           header="x y",
           delimiter=",",
         )
         np.savetxt(
           projLM_ID_file.format(key),
-          assam.projLM_ID[key],
+          projLM_ID[key],
           header="ID",
           fmt="%i",
         )
+      assam.projLM, assam.projLM_ID = projLM.copy(), projLM_ID.copy()
+
+      if config["training"]["num_imgs"] == 2:
+        # get projection IDs for alternative images (i.e. additional lateral views)
+        _, assam.projLM_ID_multipleproj = newProjLMs(
+          faces,
+          meanNorms_face,
+          surfCoords_mmOrig,
+          surfCoords_mm,
+          inputCoords,
+          plane=0,
+        )
+        assam.projLM_ID_multipleproj = [
+          assam.projLM_ID,
+          assam.projLM_ID_multipleproj,
+        ]
+        for proj_ind, proj in enumerate(assam.projLM_ID_multipleproj):
+          for key in proj.keys():
+            np.savetxt(
+              config["luna16paths"]["projLM_ID_file"].format(key, proj_ind),
+              proj[key],
+              header="ID",
+              fmt="%i",
+            )
     else:
       assam.projLM, assam.projLM_ID = dict.fromkeys(shapes), dict.fromkeys(
         shapes
       )
+      if config["training"]["num_imgs"] >= 2:
+        assam.projLM_ID_multipleproj = [dict.fromkeys(shapes)] * config[
+          "training"
+        ]["num_imgs"]
       for key in shapes:
         assam.projLM[key] = np.loadtxt(
           projLM_file.format(key), skiprows=1, delimiter=","
@@ -980,6 +1003,15 @@ if __name__ == "__main__":
         assam.projLM_ID[key] = np.loadtxt(
           projLM_ID_file.format(key), dtype=int, skiprows=1
         )
+        if config["training"]["num_imgs"] == 1:
+          continue
+        # load projected landmarks for all projections
+        for proj_ind in range(0, config["training"]["num_imgs"]):
+          assam.projLM_ID_multipleproj[proj_ind][key] = np.loadtxt(
+            config["luna16paths"]["projLM_ID_file"].format(key, proj_ind),
+            dtype=int,
+            skiprows=1,
+          )
 
     print("time taken to get projected points", round(time() - t1), "s")
     print(
@@ -1016,14 +1048,21 @@ if __name__ == "__main__":
       plt.show()
       plt.close()
       # plt.scatter(plot_pts[:,0], plot_pts[:,2])
-      for key in lobes:
-        plt.scatter(
-          inputCoords[key][assam.projLM_ID[key], 0],
-          inputCoords[key][assam.projLM_ID[key], 2],
-        )
-        # plt.scatter(projlm_basenew[key][:,0], projlm_basenew[key][:,1])
-        # plt.scatter(projlm_base[key][:,0], projlm_base[key][:,1])
-      plt.show()
+      if config["training"]["num_imgs"] > 1:
+        for proj_ind in range(0, config["training"]["num_imgs"]):
+          print(config["training"]["img_axes"][proj_ind])
+          for key in lobes:
+            plt.scatter(
+              inputCoords[key][
+                assam.projLM_ID_multipleproj[proj_ind][key],
+                config["training"]["img_axes"][proj_ind][0],
+              ],
+              inputCoords[key][
+                assam.projLM_ID_multipleproj[proj_ind][key],
+                config["training"]["img_axes"][proj_ind][1],
+              ],
+            )
+          plt.show()
     #######################################################################
     optTrans_new = dict.fromkeys(["pose", "scale"])
     optTrans_new["pose"] = [0, 0]
@@ -1098,10 +1137,23 @@ if __name__ == "__main__":
       out_lobe_file = out_surf_file.format(tID, lobe, 'stl')
       morph_lobe.mesh_target.write(out_lobe_file)
     """
-    plt.close()
-    plt.imshow(img, cmap="gray", extent=extent)
-    plt.scatter(outShape[:, 0], outShape[:, 2], s=2, c="black")
-    plt.savefig("images/reconstruction/{}.png".format(tag), dpi=200)
+    # if config['training']['num_imgs'] == 1:
+    #   plt.close()
+    #   plt.imshow(img, cmap="gray", extent=extent)
+    #   plt.scatter(outShape[:, axes[0]], outShape[:, axes[0]], s=2, c="black")
+    #   plt.savefig("images/reconstruction/{}.png".format(tag), dpi=200)
+    # else:
+    for i, axes in enumerate(assam.imgCoords_axes):
+      extent = [
+        -img.reshape(-1, 500, 500)[i].shape[1] / 2.0 * spacing_xr[axes[0]],
+        img.reshape(-1, 500, 500)[i].shape[1] / 2.0 * spacing_xr[axes[0]],
+        -img.reshape(-1, 500, 500)[i].shape[0] / 2.0 * spacing_xr[axes[1]],
+        img.reshape(-1, 500, 500)[i].shape[0] / 2.0 * spacing_xr[axes[1]],
+      ]
+      plt.close()
+      plt.imshow(img.reshape(-1, 500, 500)[i], cmap="gray", extent=extent)
+      plt.scatter(outShape[:, axes[0]], outShape[:, axes[1]], s=2, c="black")
+      plt.savefig("images/reconstruction/{}-view{}.png".format(tag, i), dpi=200)
 
     # shape parameters for ground truth
     b_gt = getShapeParameters(
