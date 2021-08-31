@@ -297,8 +297,6 @@ def newProjLMs(
   projLM, projLM_ID = assam.getProjectionLandmarks(
     faces, meanNorms_face, surfCoords_mmOrig, plane
   )
-  projlm_base = copy(projLM)
-  projlmid_base = copy(projLM_ID)
 
   if plane == 1:
     projLM, projLM_ID = assam.deleteShadowedEdges(
@@ -306,8 +304,6 @@ def newProjLMs(
       projLM,
       projLM_ID,
     )
-  projlm_basenew = copy(projLM)
-  projlmid_basenew = copy(projLM_ID)
 
   # reorder projected surface points to same order as landmarks
   # print("number proj airway pts", len(assam.projLM_ID["Airway"]))
@@ -942,11 +938,9 @@ if __name__ == "__main__":
     projLM_file = "allLandmarks/projectedMeanLandmarks{}.csv"
     projLM_ID_file = "allLandmarks/projectedMeanLandmarksID{}.csv"
     t1 = time()
-    new_projection = (
-      args.newProjLM
-    )  # False # True if given new mesh to get projection landmarks.
 
-    if len(glob(projLM_file.format("*"))) == 0 or new_projection:
+    # True if given new mesh to get projection landmarks.
+    if len(glob(projLM_file.format("*"))) == 0 or args.newProjLM:
       projLM, projLM_ID = newProjLMs(
         faces, meanNorms_face, surfCoords_mmOrig, surfCoords_mm, inputCoords
       )
@@ -968,7 +962,7 @@ if __name__ == "__main__":
 
       if config["training"]["num_imgs"] == 2:
         # get projection IDs for alternative images (i.e. additional lateral views)
-        _, assam.projLM_ID_multipleproj = newProjLMs(
+        _, projLM_ID_multipleproj = newProjLMs(
           faces,
           meanNorms_face,
           surfCoords_mmOrig,
@@ -977,8 +971,8 @@ if __name__ == "__main__":
           plane=0,
         )
         assam.projLM_ID_multipleproj = [
-          assam.projLM_ID,
-          assam.projLM_ID_multipleproj,
+          assam.projLM_ID.copy(),
+          projLM_ID_multipleproj.copy(),
         ]
         for proj_ind, proj in enumerate(assam.projLM_ID_multipleproj):
           for key in proj.keys():
@@ -988,14 +982,18 @@ if __name__ == "__main__":
               header="ID",
               fmt="%i",
             )
+            print(config["luna16paths"]["projLM_ID_file"].format(key, proj_ind))
+            print(proj[key][:10])
     else:
-      assam.projLM, assam.projLM_ID = dict.fromkeys(shapes), dict.fromkeys(
-        shapes
-      )
-      if config["training"]["num_imgs"] >= 2:
-        assam.projLM_ID_multipleproj = [dict.fromkeys(shapes)] * config[
-          "training"
-        ]["num_imgs"]
+      # if no new projLMs are needed, load some from previously created csv files
+      assam.projLM = dict.fromkeys(shapes)
+      assam.projLM_ID = dict.fromkeys(shapes)
+      # if multiple projections are used, create a separate dict to keep
+      # code simple when switching between 1 or 2 projections
+      assam.projLM_ID_multipleproj = [
+        dict.fromkeys(shapes) for i in range(0, config["training"]["num_imgs"])
+      ]
+      # load files for each shape used
       for key in shapes:
         assam.projLM[key] = np.loadtxt(
           projLM_file.format(key), skiprows=1, delimiter=","
@@ -1007,11 +1005,20 @@ if __name__ == "__main__":
           continue
         # load projected landmarks for all projections
         for proj_ind in range(0, config["training"]["num_imgs"]):
+          print(config["luna16paths"]["projLM_ID_file"].format(key, proj_ind))
           assam.projLM_ID_multipleproj[proj_ind][key] = np.loadtxt(
             config["luna16paths"]["projLM_ID_file"].format(key, proj_ind),
             dtype=int,
             skiprows=1,
           )
+        if debug:
+          # check projLM_ID_multipleproj are different and not overwritten
+          for proj_ind in range(0, config["training"]["num_imgs"]):
+            print(
+              "after loop",
+              proj_ind,
+              assam.projLM_ID_multipleproj[proj_ind][key][:10],
+            )
 
     print("time taken to get projected points", round(time() - t1), "s")
     print(
