@@ -272,17 +272,27 @@ def density_comparison(
   density_at_lm_gt = assam.getDensity(gt_lms, img, imgCoords_gt, axes=axes)
   fig, ax = plt.subplots(1, 2, figsize=(16 / 2.54, 10 / 2.54))
   ax[0].scatter(
-    out_lms[:, axes[0]], out_lms[:, axes[1]], 
-    c=density_at_lm_out, cmap="gray", s=5, vmin=-2, vmax=2,
+    out_lms[:, axes[0]],
+    out_lms[:, axes[1]],
+    c=density_at_lm_out,
+    cmap="gray",
+    s=5,
+    vmin=-2,
+    vmax=2,
   )
   ax[1].scatter(
-    gt_lms[:, axes[0]], gt_lms[:, axes[1]], 
-    c=density_at_lm_gt, cmap="gray", s=5, vmin=-2, vmax=2,
+    gt_lms[:, axes[0]],
+    gt_lms[:, axes[1]],
+    c=density_at_lm_gt,
+    cmap="gray",
+    s=5,
+    vmin=-2,
+    vmax=2,
   )
-  ax[0].set_title('Output reconstruction')
-  ax[1].set_title('Ground truth')
-  print('out density', density_at_lm_out)
-  print('gt density', density_at_lm_gt)
+  ax[0].set_title("Output reconstruction")
+  ax[1].set_title("Ground truth")
+  print("out density", density_at_lm_out)
+  print("gt density", density_at_lm_gt)
   for a in ax:
     a.axes.xaxis.set_ticks([])
     a.axes.yaxis.set_ticks([])
@@ -643,9 +653,9 @@ if __name__ == "__main__":
     2,
     0,
   )
-  if config['training']['num_imgs'] == 2:
+  if config["training"]["num_imgs"] == 2:
     # join so array is shape Npatients, Nimages, Npixels_x, Npixels_y
-    drrArr = np.stack((drrArr, drrArr_left),axis=1)
+    drrArr = np.stack((drrArr, drrArr_left), axis=1)
 
   # offset centered coordinates to same reference frame as CT data
   carinaArr = nodalCoordsOrig[:, 1]
@@ -728,13 +738,13 @@ if __name__ == "__main__":
     landmarks, lmProj, drrArr, origin, spacing, train_size=landmarks.shape[0]
   )
   if testIm[0].ndim == 3:
-    # if multiple images for reconstruction, get density for each one 
+    # if multiple images for reconstruction, get density for each one
     # which is last N columns from xg_train
-    density = ssam.xg_train[:,:,-testIm[0].shape[0]:]
-    number_of_features = 3 + testIm[0].shape[0] # 3 = num coordinates
+    density = ssam.xg_train[:, :, -testIm[0].shape[0] :]
+    number_of_features = 3 + testIm[0].shape[0]  # 3 = num coordinates
   else:
-    density = ssam.xg_train[:,:,-1].reshape(len(landmarks),-1,1)
-    number_of_features = 4 # three coordinates, and a density value
+    density = ssam.xg_train[:, :, -1].reshape(len(landmarks), -1, 1)
+    number_of_features = 4  # three coordinates, and a density value
 
   model = ssam.phi_sg
   meanArr = np.mean(landmarks, axis=0)
@@ -756,7 +766,9 @@ if __name__ == "__main__":
   modelDict["ALL"] = model
   for shape in shapes:
     inputCoords[shape] = copy(meanArr[lmOrder[shape]])
-    modelDict[shape] = model.reshape(len(landmarks), -1, number_of_features)[:, lmOrder[shape]]
+    modelDict[shape] = model.reshape(len(landmarks), -1, number_of_features)[
+      :, lmOrder[shape]
+    ]
 
   mean_mesh = dict.fromkeys(shapes)
   faces = dict.fromkeys(shapes)  # faces of mean surface for each shape
@@ -877,7 +889,7 @@ if __name__ == "__main__":
 
     tag = tagBase + "_case" + tID
     # load image directly from training data
-    img = tImg.copy()  
+    img = tImg.copy()
 
     # index 0 as output is stacked
     imgCoords = ssam.sam.drrArrToRealWorld(img, np.zeros(3), tSpace)[0]
@@ -1099,6 +1111,8 @@ if __name__ == "__main__":
       pointCounter += inputCoords[key].shape[0]
     assam.projLM_IDAll = np.array(assam.projLM_IDAll)
 
+    # debug check showing projected landmarks (i.e. the outline)
+    # this should be a smooth line in the curvature of the lobes
     if debug:
       plot_pts = surfCoords_mm["Airway"][assam.projLM_ID["Airway"]]
       print("number proj airway pts", len(assam.projLM_ID["Airway"]))
@@ -1126,7 +1140,8 @@ if __name__ == "__main__":
               ],
             )
           plt.show()
-    #######################################################################
+
+    # initialise parameters to be optimised - including initial values + bounds
     optTrans_new = dict.fromkeys(["pose", "scale"])
     optTrans_new["pose"] = [0, 0]
     optTrans_new["scale"] = 1
@@ -1135,15 +1150,19 @@ if __name__ == "__main__":
       [
         (-20, 20),
         (-20, 20),
-        (0.4, 2.0),  # (optTrans_new["scale"]*0.9, optTrans_new["scale"]*1.1),
+        (0.7, 1.3),
+        # (0.4, 2.0),  # (optTrans_new["scale"]*0.9, optTrans_new["scale"]*1.1),
         (-3, 3),
       ]
-    )  # (-3, 3)])
+    )
 
+    # initialise parameters that control optimisation process
     assam.optimiseStage = "both"  # tell class to optimise shape and pose
     assam.optIterSuc, assam.optIter = 0, 0
     assam.scale = optTrans_new["scale"]
     assert len(assam.projLM_ID) != 0, "no projected landmarks"
+
+    # perform optimisation
     optAll = assam.optimiseAirwayPoseAndShape(
       assam.objFuncAirway, initPose, bounds, epochs=numEpochs, threads=1
     )
@@ -1152,6 +1171,8 @@ if __name__ == "__main__":
         time() - startTime, round((time() - startTime) / 60.0), 3
       )
     )
+
+    # get final shape
     outShape = assam.morphAirway(
       inputCoords["ALL"],
       inputCoords["ALL"].mean(axis=0),
@@ -1277,7 +1298,7 @@ if __name__ == "__main__":
 
       density_comparison(
         outShape,
-        lmProj_test[t],#+testOrigin[t],
+        lmProj_test[t],  # +testOrigin[t],
         tImg.reshape(-1, 500, 500)[i],
         imgCoords,
         imgCoords,
@@ -1294,21 +1315,21 @@ if __name__ == "__main__":
 """
 # CHECK GROUND TRUTH OVERLAID ON XR
 # get carina for alignment
-# test_index = [i for i in range(0,len(patientIDs)) 
-#                 if patientIDs[i] == testID[t]]
-# test_carina = nodalCoordsOrig[test_index[t],1]
+test_index = [i for i in range(0,len(lmIDs)) 
+                if lmIDs[i] == testID[t]]
+test_carina = nodalCoordsOrig[test_index[t],1]
 
-# extent=[-img.shape[1]/2.*spacing_xr[0]+testOrigin[0][0],  
-#         img.shape[1]/2.*spacing_xr[0]+testOrigin[0][0],  
-#         -img.shape[0]*spacing_xr[2]+testOrigin[0][2],  
-#         testOrigin[0][2] ]
+extent=[-img[0].shape[1]/2.*spacing_xr[0]+testOrigin[0][0],  
+        img[0].shape[1]/2.*spacing_xr[0]+testOrigin[0][0],  
+        -img[0].shape[0]*spacing_xr[2]+testOrigin[0][2],  
+        testOrigin[0][2] ]
 
-# plt.close()
-# plt.imshow(img, cmap='gray', extent=extent)
-# plt.scatter(lmProj_test[0][:,0]+testOrigin[0][0], 
-#             lmProj_test[0][:,2]+testOrigin[0][2]+test_carina[2], 
-#             s=2, c='green')
-# plt.show()
+plt.close()
+plt.imshow(img[0], cmap='gray', extent=extent)
+plt.scatter(lmProj_test[0][:,0]+testOrigin[0][0], 
+            lmProj_test[0][:,2]+testOrigin[0][2]+test_carina[2], 
+            s=2, c='green')
+plt.show()
 """
 """
 ourShape = outShape - outShape[lmOrder['SKELETON'][1]]
