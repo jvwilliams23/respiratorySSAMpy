@@ -198,12 +198,19 @@ def getInputs():
     type=int,
     help="number of samples in test set [default is 1]",
   )
+  parser.add_argument(
+    "-q",
+    "--quiet",
+    default=str(False),
+    type=strtobool,
+    help="Turn off print checks",
+  )
 
   args = parser.parse_args()
   return args
 
 
-def plotDensityError(shape_lms, densityIn, densityMinus=0, tag=""):
+def plotDensityError(shape_lms, densityIn, densityMinus=0, tag="", axes=[0, 2]):
   """
   Plots the error in two gray-values (density) compared to each other.
   Could apply to density at LM location - density from model,
@@ -218,8 +225,8 @@ def plotDensityError(shape_lms, densityIn, densityMinus=0, tag=""):
   plt.close()
   fig, ax = plt.subplots(1, figsize=(16 / 2.54, 10 / 2.54))
   a = ax.scatter(
-    shape_lms[:, 0],
-    shape_lms[:, 2],
+    shape_lms[:, axes[0]],
+    shape_lms[:, axes[1]],
     cmap="seismic",
     c=abs(densityIn - densityMinus).reshape(-1),
     vmin=0,
@@ -234,6 +241,54 @@ def plotDensityError(shape_lms, densityIn, densityMinus=0, tag=""):
   fig.suptitle("Density error in reconstruction", fontsize=12)
   fig.savefig(
     "./images/reconstruction/debug/density-error" + tag + ".png",
+    pad_inches=0,
+    format="png",
+    dpi=300,
+  )
+  return None
+
+
+def density_error_for_point_cloud(
+  landmarks, imgCoords, img, comparison_density, tag="", axes=[0, 2]
+):
+  """
+  For a given point cloud of landmarks, get density error on image and return
+  vs modelled
+  """
+  density_at_lm = assam.getDensity(landmarks, img, imgCoords, axes=axes)
+  plotDensityError(
+    landmarks, density_at_lm, comparison_density, tag=tag, axes=axes
+  )
+  return None
+
+
+def density_comparison(
+  out_lms, gt_lms, img, imgCoords_out, imgCoords_gt, tag="", axes=[0, 2]
+):
+  """
+  For two given point clouds of landmarks, compare density and shape of each
+  """
+  density_at_lm_out = assam.getDensity(out_lms, img, imgCoords_out, axes=axes)
+  density_at_lm_gt = assam.getDensity(gt_lms, img, imgCoords_gt, axes=axes)
+  fig, ax = plt.subplots(1, 2, figsize=(16 / 2.54, 10 / 2.54))
+  ax[0].scatter(
+    out_lms[:, axes[0]], out_lms[:, axes[1]], 
+    c=density_at_lm_out, cmap="gray", s=5, vmin=-2, vmax=2,
+  )
+  ax[1].scatter(
+    gt_lms[:, axes[0]], gt_lms[:, axes[1]], 
+    c=density_at_lm_gt, cmap="gray", s=5, vmin=-2, vmax=2,
+  )
+  ax[0].set_title('Output reconstruction')
+  ax[1].set_title('Ground truth')
+  print('out density', density_at_lm_out)
+  print('gt density', density_at_lm_gt)
+  for a in ax:
+    a.axes.xaxis.set_ticks([])
+    a.axes.yaxis.set_ticks([])
+    a.axis("off")
+  fig.savefig(
+    "./images/reconstruction/debug/density-comparison" + tag + ".png",
     pad_inches=0,
     format="png",
     dpi=300,
@@ -308,7 +363,8 @@ def newProjLMs(
   # reorder projected surface points to same order as landmarks
   # print("number proj airway pts", len(assam.projLM_ID["Airway"]))
   for key in shapes:
-    print("reordering projected landmarks for", key)
+    if not args.quiet:
+      print("reordering projected landmarks for", key)
     newProjIDs = []
     newProjPos = []
     # find closest surface point for each landmark
@@ -741,7 +797,7 @@ if __name__ == "__main__":
       meanArr[lmOrder["Airway"]],
       template_airway_mesh,
       sigma=0.3,
-      quiet=True,
+      quiet=args.quiet,
     )
     morph_airway.mesh_target.write(mean_shape_file)
     np.savetxt(
@@ -765,7 +821,7 @@ if __name__ == "__main__":
         meanArr[lmOrder[lobe]],
         template_lobe_mesh,
         sigma=0.3,
-        quiet=True,
+        quiet=args.quiet,
       )
       mean_lobe_file_out = templateDir + "mean{}.stl".format(lobe)
       morph_lobe.mesh_target.write(mean_lobe_file_out)
@@ -788,14 +844,16 @@ if __name__ == "__main__":
   # extract mesh data (coords, normals and faces)
   for key in shapes:
     print("loading {} mesh".format(key))
-    print("original num cells", len(mean_mesh[key].faces()))
+    if not args.quiet:
+      print("original num cells", len(mean_mesh[key].faces()))
     if key == "Airway":
       mesh = mean_mesh[key].clone()
       pass
       # mesh = mean_mesh[key].clone().decimate(N=40e3).clean()
     else:
       mesh = mean_mesh[key].clone().decimate(fraction=0.1).clean()
-    print("decimated num cells", len(mesh.faces()))
+    if not args.quiet:
+      print("decimated num cells", len(mesh.faces()))
     # load mesh data and create silhouette
     surfCoords = mesh.points()
     meanNorms_face[key] = mesh.normals(cells=True)
@@ -818,19 +876,14 @@ if __name__ == "__main__":
   ):
 
     tag = tagBase + "_case" + tID
-    # declare test image and pre-process
-    # imgOrig = copy(img) #-backup test image original
-    img = (
-      tImg.copy()
-    )  # ssam.imgsN[caseIndex] #-load image directly from training data
-    img = ssam.sam.normaliseTestImageDensity(img)  # normalise "unseen" image
+    # load image directly from training data
+    img = tImg.copy()  
+
     # index 0 as output is stacked
-    imgCoords = ssam.sam.drrArrToRealWorld(
-      img, np.zeros(3), tSpace
-    )[0]  
-    spacing_xr = tSpace.copy()  
+    imgCoords = ssam.sam.drrArrToRealWorld(img, np.zeros(3), tSpace)[0]
+    spacing_xr = tSpace.copy()
     # center image coords, so in the same coord system as edges
-    imgCoords -= np.mean(imgCoords, axis=0) 
+    imgCoords -= np.mean(imgCoords, axis=0)
 
     # for plotting image in same ref frame as the edges
     extent = [
@@ -924,6 +977,7 @@ if __name__ == "__main__":
       c_anatomical=c_anatomical,
       kernel_distance=kernel_distance,
       kernel_radius=kernel_radius,
+      quiet=args.quiet,
       img_names=config["training"]["img_names"],
       shapes_to_skip_fitting=config["training"]["shapes_to_skip_fit"],
     )
@@ -1108,15 +1162,23 @@ if __name__ == "__main__":
       outShape, optAll["scale"], outShape.mean(axis=0)
     )
 
+    """
     # population mean density for each landmark, 1D arr with len=num lms
     density_mean = assam.density.mean(axis=0)
     # density at landmark location
-    density_at_lm = assam.getDensity(outShape, img, imgCoords)
+
+    density_at_lm = np.stack(
+        [assam.getDensity(outShape, img[i], 
+                          imgCoords[:,config['training']['img_axes'][i]])
+          for i in range(0, config['training']['num_imgs'])], 
+      axis=1
+    )
     density_from_model = assam.getg_allModes(
-      density_mean,
+      assam.density.mean(axis=0).reshape(-1),
       assam.model_g["ALL"][: len(optAll["b"])],
       optAll["b"] * np.sqrt(assam.variance),
-    )
+    ).reshape(-1, config['training']['num_imgs'])
+    """
 
     out_file = "{}_{}.{}"
     out_surf_file = "surfaces/" + out_file
@@ -1177,10 +1239,51 @@ if __name__ == "__main__":
 
     # plotDensityError(outShape, density_at_lm,
     #                     tag='from1')
-    plotDensityError(
-      outShape, density_at_lm, density_from_model, tag="fromModel"
-    )
-    plotDensityError(outShape, density_at_lm, density_mean, tag="fromMean")
+    # plotDensityError(
+    #   outShape, density_at_lm[:,0], density_from_model[:,0], tag="fromModel_view0"
+    # )
+    # plotDensityError(outShape, density_at_lm, density_mean, tag="fromMean")
+
+    density_from_model = assam.getg_allModes(
+      assam.density.mean(axis=0).reshape(-1),
+      assam.model_g["ALL"][: len(optAll["b"])],
+      optAll["b"] * np.sqrt(assam.variance),
+    ).reshape(-1, config["training"]["num_imgs"])
+    for i in range(0, config["training"]["num_imgs"]):
+      # plot
+      density_error_for_point_cloud(
+        outShape,
+        ssam.sam.imgCoords_all,
+        # img[i],
+        tImg.reshape(-1, 500, 500)[i],
+        density_from_model[:, i],
+        tag="reconstructionFromModel_view{}".format(i),
+        axes=config["training"]["img_axes"][i],
+      )
+
+      # get density error for true landmarks
+      test_index = [i for i in range(0, len(lmIDs)) if lmIDs[i] == testID[t]]
+      test_carina = nodalCoordsOrig[test_index[t], 1]
+
+      density_error_for_point_cloud(
+        lmProj_test[t],
+        imgCoords,
+        # img[i],
+        tImg.reshape(-1, 500, 500)[i],
+        density_from_model[:, i],
+        tag="groundTruthFromModel_view{}".format(i),
+        axes=config["training"]["img_axes"][i],
+      )
+
+      density_comparison(
+        outShape,
+        lmProj_test[t],#+testOrigin[t],
+        tImg.reshape(-1, 500, 500)[i],
+        imgCoords,
+        imgCoords,
+        tag="_view{}".format(i),
+        axes=config["training"]["img_axes"][i],
+      )
 
     # ax[0].imshow(img, cmap="gray", extent=extent)
     # ax[0].scatter(edgePoints[:,0], edgePoints[:,1],s=2)
