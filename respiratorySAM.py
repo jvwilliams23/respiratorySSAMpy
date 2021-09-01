@@ -77,7 +77,7 @@ class RespiratorySAM:
     # self.testLandmarkAndImageBounds(self.lm[:,:,[0,2]], self.imgCoords)
 
     self.density_base = self.getTrainingDensity(
-      self.lm, self.imgs, self.imgCoords
+      self.lm, self.imgs, self.imgCoords_all, axes
     )
 
     self.density = (
@@ -164,7 +164,7 @@ class RespiratorySAM:
   #                            axis=0)
   #   img[499-nearestZ, nearestX] = density
 
-  def getDensity(self, lm, img, imgCoords):
+  def getDensity(self, lm, img, imgCoords, axes=[0, 2]):
     """
     Returns density of a landmark based on comparing landmark coordinates to
     pixel with nearest real world coordinate in x and z direction.
@@ -172,20 +172,29 @@ class RespiratorySAM:
     Inputs:
         lm: (coords x 3) array of landmarks
         img: (drr x-dimension x drr y-dimension) array of grey values
-        imgCoords: (drr x-dimension x 2)
+        imgCoords: (drr x-dimension x 3)
             Note that imgCoords axis=1 value assumes a square figure
             (same number of x and y pixels)
+        axes (list): indexes of coordinates which are projected to image
 
     Return:
         density: (coords) array of grey value for each landmarks
     """
     # -use argmin to find nearest pixel neighboring a point
-    nearestX = np.argmin(abs(lm[:, 0] - imgCoords[:, 0].reshape(-1, 1)), axis=0)
-    nearestZ = np.argmin(abs(lm[:, 2] - imgCoords[:, 1].reshape(-1, 1)), axis=0)
+    nearestX = np.argmin(abs(lm[:, axes[0]] - imgCoords[:, axes[0]].reshape(-1, 1)), axis=0)
+    nearestZ = np.argmin(abs(lm[:, axes[1]] - imgCoords[:, axes[1]].reshape(-1, 1)), axis=0)
 
-    return img[len(img) - 1 - nearestZ, nearestX]  # gives correct result
+    lm_density = img[len(img) - 1 - nearestZ, nearestX]  # gives correct result
+    
+    scale_factor = lm_density.std()
+    # if scale_factor == 0:
+    #   plt.scatter(lm[:,0])
+    assert scale_factor != 0, 'std dev is 0. -> density will give NaN {}'.format(lm_density)
+    lm_density -= lm_density.mean()
+    lm_density /= lm_density.std()
+    return lm_density
 
-  def getTrainingDensity(self, lm, img, imgCoords):
+  def getTrainingDensity(self, lm, img, imgCoords, axes=[0, 2]):
     """
     Returns density of a landmark based on comparing landmark coordinates to
     pixel with nearest real world coordinate in x and z direction.
@@ -193,9 +202,10 @@ class RespiratorySAM:
     Inputs:
         lm: (patients x coords x 3) array of landmarks
         img: (patients x drr x-dimension x drr y-dimension) array of grey values
-        imgCoords: (patients x drr x-dimension x 2)
+        imgCoords: (patients x drr x-dimension x 3)
             Note that imgCoords axis=1 value assumes a square figure
             (same number of x and y pixels)
+        axes (list): indexes of coordinates which are projected to image
 
     Return:
         density: (patients x coords) array of grey value for each landmark
@@ -208,7 +218,7 @@ class RespiratorySAM:
     for p in range(lm.shape[0]):
       if debug:
         print("testing {} patient {}".format(shape, patientIDs[p]))
-      density[p] = self.getDensity(lm[p], img[p], imgCoords[p])
+      density[p] = self.getDensity(lm[p], img[p], imgCoords[p], axes=axes)
 
       # if debug:
       #   plt.close()
