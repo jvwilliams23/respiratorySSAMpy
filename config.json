@@ -22,7 +22,7 @@
     // string to describe + differentiate from images 
     //    here we use the direction taken from
     "img_names": ["frontal", "left"],
-    "shapes_to_skip_fit": [["RML"], ["RUL", "RML", "RLL"]],
+    "shapes_to_skip_fit": [["Airway", "RML"], ["Airway", "RUL", "RML", "RLL"]],
   },
   "test-set":
   {
