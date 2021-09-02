@@ -263,79 +263,99 @@ class RespiratoryReconstructSSAM:
       lobe_morphed[lobe] = all_morphed[self.lmOrder[lobe]]
     fit = self.fitTerm(xRay, lobe_morphed, shapenorms)
 
+    loss_anatomicalShadow = 0.
     if self.number_of_imgs > 1:
-      density_t = [None]*self.number_of_imgs
-      for i in range(0, self.number_of_imgs):
-        density_t[i] = self.getDensity(all_morphed, self.img[i], self.imgCoords_all[self.imgCoords_axes[i]])
-      # convert list to array 
-      # change from shape N_imgs, N_lms -> N_lms, N_imgs 
-      density_t  = np.array(density_t).T
-    else:
-      density_t = self.getDensity(all_morphed, self.img, self.imgCoords).reshape(-1,1)
+      density_t = [None] * self.number_of_imgs
+      for i, axes in enumerate(self.imgCoords_axes):
+        density_t[i] = self.getDensity(
+          all_morphed, self.img[i], self.imgCoords, axes
+        )
+        loss_anatomicalShadow += self.c_anatomical * self.anatomicalShadow(
+          self.img_local,
+          self.imgCoords[:, axes],
+          airway_morphed,
+          self.lmOrder,
+          kernel_distance=self.kernel_distance,
+          kernel_radius=self.kernel_radius,
+          axes=axes,
+        )
 
-    print(all_morphed.shape, density_t.shape)
+      # convert list to array
+      # change from shape N_imgs, N_lms -> N_lms, N_imgs
+      # density_t = np.array(density_t).T
+      density_t = np.stack(density_t, axis=1)
+    else:
+      density_t = self.getDensity(
+        all_morphed, self.img, self.imgCoords, self.imgCoords_axes
+      ).reshape(-1, 1)
+      loss_anatomicalShadow += self.c_anatomical * self.anatomicalShadow(
+        self.img_local,
+        self.imgCoords[:, self.imgCoords_axes[0]],
+        airway_morphed,
+        self.lmOrder,
+        kernel_distance=self.kernel_distance,
+        kernel_radius=self.kernel_radius,
+        axes=self.imgCoords_axes[0],
+      )
+
+    # change so density at landmark location is scaled same as modelled density
+    # density_t -= density_t.mean(axis=0)
+    # density_t /= density_t.std(axis=0)
+
+    # print(all_morphed.shape, density_t.shape)
     # -TODO - TEST WITH modelled density instead of target?
     shapeIn = self.stackShapeAndDensity(self.scaleShape(all_morphed), density_t)
     # prior = np.sum(abs(b)/self.variance)
     prior = self.priorTerm(shapeIn, self.meanScaled)
 
+    # TODO - FILTER DENSITY LOSS TO ONLY VOXELS WITHIN imgCoords
     densityFit = self.densityLoss(
       density_t.reshape(-1),
       self.density.mean(axis=0).reshape(-1),
       self.model_g["ALL"][: len(self.b)],
       self.b,
     )
-    print("\tfit loss {}\n\tdensity loss {}".format(fit, densityFit))
-    print("\tprior loss", prior)  # round(prior,4))
+    if not self.quiet: 
+      print("\tfit loss",fit)
+      print("\tdensity loss", densityFit)
+      print("\tprior loss", prior)  # round(prior,4))
     # self.c_edge = 0.2
     tallest_pt = airway_morphed[np.argmax(airway_morphed[:, 2])]
     # if self.c_grad != 0.0:
     #   gradFit = self.gradientTerm(airway_morphed, self.imgGrad, self.imgCoords)
 
     top_dist = 1.0 - np.exp(
-      -1.0 * abs(tallest_pt[2] - self.imgCoords_all[:, 2].max()) / 5.0
+      -1.0 * abs(tallest_pt[2] - self.imgCoords[:, 2].max()) / 5.0
     )
-    # top_dist = abs(tallest_pt[2]-self.imgCoords[:,1].max())
 
     E = (
       (self.c_prior * prior) + (self.c_dense * densityFit) + (self.c_edge * fit)
     )
-    E = (
-      (self.c_edge * fit)
-    )
+    # E = (self.c_dense * densityFit) + (self.c_edge * fit)
+    # E = (
+    #   (self.c_edge * fit)
+    # )
     # if self.c_grad != 0.0:
     #   E += self.c_grad * gradFit
-    # E += top_dist * 1.0
-    # E += loss_anatomicalShadow
+    E += top_dist * 1.0
+    E += loss_anatomicalShadow
+    print("top dist", top_dist)
     if not self.quiet:
-      print("top dist", top_dist)
-      print('anatomical shadow and top dist off')
-    if outside_bounds:
+      print("anatomical shadow and top dist off")
+    if outside_bounds and self.optIter > 100:
+      # as we use max value from loss log, make sure this is only after 100
+      #   iterations, so the max value will not be sensitive to outliers
       if not self.quiet:
         print("OUTSIDE OF BOUNDS")
-      # E += 0.25
-      # return 2 # hard coded, assuming 2 is a large value for loss
-    # if self.optIter > 1:
-    loss_anatomicalShadow = self.c_anatomical * self.anatomicalShadow(
-      self.img_local,
-      self.imgCoords,
-      airway_morphed,
-      self.lmOrder,
-      kernel_distance=self.kernel_distance,
-      kernel_radius=self.kernel_radius,
-    )
+      E += max(self.lossLog)*0.2
     print("\ttotal loss", E)
 
-    if self.optIter % 250 == 0 and not self.quiet:
+    if self.optIter % self.plot_freq == 0: #and not self.quiet:
       if self.number_of_imgs == 1:
         self.overlayAirwayOnXR(self.img, all_morphed, scale, pose)
       elif self.number_of_imgs >= 2:
         self.overlayAirwayOnXR_multipleimgs(self.img, all_morphed, scale, pose)
-      # exit()
-    # if np.isnan(E):
-    #   return 2
-    # else:
-    #   return E
+    assert ~np.isnan(densityFit), 'unexpected NaN {}'.format(density_t)
     return E
 
   def gradientTerm(self, coords, imgGrad, imgCoords):
@@ -351,7 +371,7 @@ class RespiratoryReconstructSSAM:
     return (-1.0 * lmGrad).mean()
 
   def anatomicalShadow(
-    self, img, img_coords, landmarks, lmOrder, kernel_distance, kernel_radius
+    self, img, img_coords, landmarks, lmOrder, kernel_distance, kernel_radius, axes=[0, 2]
   ):
     """
     anatomical shadow function proposed by
@@ -391,8 +411,8 @@ class RespiratoryReconstructSSAM:
       np.isin(airway_surf_ids, self.projLM_ID["Airway"])
     ]
 
-    skel_pts = landmarks[skeleton_ids][:, [0, 2]]
-    silhouette_pts = landmarks[airway_surf_ids][:, [0, 2]]
+    skel_pts = landmarks[skeleton_ids][:, axes]
+    silhouette_pts = landmarks[airway_surf_ids][:, axes]
 
     dists = cdist(silhouette_pts, skel_pts)
     nearest_skel_pt = np.argmin(dists, axis=1)
@@ -401,10 +421,10 @@ class RespiratoryReconstructSSAM:
     norm_vec = np.divide(vec, np.c_[div, div])
 
     all_p_in = (
-      silhouette_pts + norm_vec * kernel_distance * self.spacing_xr[[0, 2]]
+      silhouette_pts + norm_vec * kernel_distance * self.spacing_xr[axes]
     )
     all_p_out = (
-      silhouette_pts - norm_vec * kernel_distance * self.spacing_xr[[0, 2]]
+      silhouette_pts - norm_vec * kernel_distance * self.spacing_xr[axes]
     )
     # energy = np.zeros(len(all_p_out))
     energy = []
