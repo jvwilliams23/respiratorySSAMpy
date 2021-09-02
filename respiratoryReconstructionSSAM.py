@@ -222,9 +222,9 @@ class RespiratoryReconstructSSAM:
     # -call test parameters from optimizer
     self.b = copy(b)
 
-    if not self.quiet:
-      print("\t\t opt params ", pose, scale)
-      print("\t\t\t", b)
+    # if not self.quiet:
+    print("\t\t opt params ", pose, scale)
+    print("\t\t\t", b)
     # -apply new shape parameters to each lobe
     all_morphed = self.morphAirway(
       meanShape,  # shape[key],
@@ -232,7 +232,11 @@ class RespiratoryReconstructSSAM:
       self.b,
       self.model_s["ALL"][: len(self.b)],
     )
+    # when registering initial shape, overwrite morphed shape with mean shape
+    if self.optimiseStage in ["pose", "align"]:
+      all_morphed = copy(meanShape)
 
+    """ """
     if pose.size == 2:
       pose = np.insert(pose, 1, 0)
     align = np.mean(all_morphed, axis=0)
@@ -240,7 +244,9 @@ class RespiratoryReconstructSSAM:
     all_morphed = self.centerThenScale(all_morphed, scale, align)
     # -apply transformation to shape
     all_morphed = all_morphed + pose
+    """ """
 
+    print('pose and scale off')
     airway_morphed = all_morphed[self.lmOrder["Airway"]]
     # -check shape has not moved to be larger than XR or located outside XR
     # outside_bounds = np.any((all_morphed[:,2]>self.imgCoords[:,1].max())
@@ -249,9 +255,9 @@ class RespiratoryReconstructSSAM:
     #                         | (all_morphed[:,0]<self.imgCoords[:,0].min())
     #                         )
     outside_bounds = np.any(
-      (all_morphed[:, 2] < self.imgCoords_all[:, 2].min())
-      | (all_morphed[:, 0] > self.imgCoords_all[:, 0].max())
-      | (all_morphed[:, 0] < self.imgCoords_all[:, 0].min())
+      (all_morphed[:, 2].min() < self.imgCoords[:, 2].min())
+      | (all_morphed[:, 0].max() > self.imgCoords[:, 0].max())
+      | (all_morphed[:, 0].max()< self.imgCoords[:, 0].min())
     )
 
     self.scale = scale  # -set globally to call in fitTerm
@@ -276,6 +282,7 @@ class RespiratoryReconstructSSAM:
           self.imgCoords[:, axes],
           airway_morphed,
           self.lmOrder,
+          self.projLM_ID_multipleproj[i]["Airway"],
           kernel_distance=self.kernel_distance,
           kernel_radius=self.kernel_radius,
           axes=axes,
@@ -294,6 +301,7 @@ class RespiratoryReconstructSSAM:
         self.imgCoords[:, self.imgCoords_axes[0]],
         airway_morphed,
         self.lmOrder,
+        self.projLM_ID["Airway"],
         kernel_distance=self.kernel_distance,
         kernel_radius=self.kernel_radius,
         axes=self.imgCoords_axes[0],
@@ -372,7 +380,7 @@ class RespiratoryReconstructSSAM:
     return (-1.0 * lmGrad).mean()
 
   def anatomicalShadow(
-    self, img, img_coords, landmarks, lmOrder, kernel_distance, kernel_radius, axes=[0, 2]
+    self, img, img_coords, landmarks, lmOrder, projLM_ID, kernel_distance, kernel_radius, axes=[0, 2]
   ):
     """
     anatomical shadow function proposed by
@@ -409,7 +417,7 @@ class RespiratoryReconstructSSAM:
     airway_surf_ids = airway_ids[~np.isin(airway_ids, skeleton_ids)]
     # get surface points that are in projected points list
     airway_surf_ids = airway_surf_ids[
-      np.isin(airway_surf_ids, self.projLM_ID["Airway"])
+      np.isin(airway_surf_ids, projLM_ID)
     ]
 
     skel_pts = landmarks[skeleton_ids][:, axes]
