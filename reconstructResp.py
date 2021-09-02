@@ -771,11 +771,13 @@ if __name__ == "__main__":
   # center the lobes vertically
   # keep vertical alignment term for later use
   lmAlign = meanArr[:, 2].mean()  # landmarks[:,2].mean()
-  meanArr[:, 2] -= lmAlign
+  offset_to_centre = meanArr.mean(axis=0)
+  meanArr -= offset_to_centre
+  # meanArr[:, 2] -= lmAlign
 
   modelDict = dict.fromkeys(shapes)
   inputCoords = dict.fromkeys(shapes)
-  inputCoords["ALL"] = meanArr
+  inputCoords["ALL"] = meanArr.copy()
   modelDict["ALL"] = model
   for shape in shapes:
     inputCoords[shape] = copy(meanArr[lmOrder[shape]])
