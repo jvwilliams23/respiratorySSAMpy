@@ -23,12 +23,12 @@ parser.add_argument('--dirname', '-d',
 parser.add_argument('--blandaltman', '-ba',
                     default='False', 
                     type=strtobool,#, required=True,
-                    help='Show bland altman plot [mm]'
+                    help='Show bland altman plot in mm'
                     )
 parser.add_argument('--normalised_error', '-err',
                     default='False', 
                     type=strtobool,#, required=True,
-                    help='Show error vs value [%]'
+                    help='Show error vs value in percent'
                     )
 parser.add_argument('--linear_regression', '-lr',
                     default='False', 
