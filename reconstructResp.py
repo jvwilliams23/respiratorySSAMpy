@@ -58,6 +58,12 @@ def getInputs():
     help="input files (landmarks)",
   )
   parser.add_argument(
+    "--load_data_only",
+    default="False",  #'3948',
+    type=strtobool,  # , required=True,
+    help="only load input data. Do not perform optimisation.",
+  )
+  parser.add_argument(
     "--case",
     "-c",
     default="none",  #'3948',
@@ -98,7 +104,7 @@ def getInputs():
   parser.add_argument(
     "--c_anatomical",
     "-ca",
-    default=0.6,
+    default=0.2,
     type=float,
     help="anatomical shadow loss coefficient",
   )
@@ -112,14 +118,14 @@ def getInputs():
   parser.add_argument(
     "--kernel_radius",
     "-kr",
-    default=9,
+    default=14,
     type=int,
     help="radius (pixels) of image kernels",
   )
   parser.add_argument(
     "--kernel_distance",
     "-kd",
-    default=18,
+    default=20,
     type=int,
     help="distance (pixels) between image kernels",
   )
@@ -139,7 +145,7 @@ def getInputs():
   )
   parser.add_argument(
     "--shapes",
-    default="*",
+    default="Airway RUL RML RLL LUL LLL",
     type=str,
     help="which shape would the user like to grow?"
     + "Corresponds to string common in landmarks text files"
@@ -197,6 +203,13 @@ def getInputs():
     default=1,
     type=int,
     help="number of samples in test set [default is 1]",
+  )
+  parser.add_argument(
+    "-pf",
+    "--plot_freq",
+    default=250,
+    type=int,
+    help="save figure showing SSM on XR after this many iterations",
   )
   parser.add_argument(
     "-q",
@@ -992,6 +1005,7 @@ if __name__ == "__main__":
       quiet=args.quiet,
       img_names=config["training"]["img_names"],
       shapes_to_skip_fitting=config["training"]["shapes_to_skip_fit"],
+      plot_freq=args.plot_freq,
     )
     assam.spacing_xr = spacing_xr
     # import variables to class

@@ -55,20 +55,21 @@ class RespiratoryReconstructSSAM:
     img=None,
     imgCoords=None,
     imgCoords_all=None,
-    imgCoords_axes=[0,2],
+    imgCoords_axes=[0, 2],
     model=None,
     modeNum=None,
     epochs=200,
-    c_edge=1.0,
+    c_edge=0.01,
     c_prior=0.01,
-    c_dense=0.5,
+    c_dense=1.0,
     c_anatomical=0.6,
     c_grad=0.4,
     kernel_distance=27,  # 18,9
     kernel_radius=16,
     quiet=False,
     img_names=["frontal"],
-    shapes_to_skip_fitting=["None"]
+    shapes_to_skip_fitting=["None"],
+    plot_freq=250,
   ):  # 7):
 
     # tunable hyper-parameters
