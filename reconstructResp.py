@@ -912,17 +912,8 @@ if __name__ == "__main__":
     # center image coords, so in the same coord system as edges
     imgCoords -= np.mean(imgCoords, axis=0)
 
-    # for plotting image in same ref frame as the edges
-    extent = [
-      -img.shape[1] / 2.0 * spacing_xr[0],
-      img.shape[1] / 2.0 * spacing_xr[0],
-      -img.shape[0] / 2.0 * spacing_xr[2],
-      img.shape[0] / 2.0 * spacing_xr[2],
-    ]
-    extent_tmp = np.array(extent)
 
     # edge points in units of pixels from edge map
-    # xrayEdgeFile = "{}/{}/drr-outline-{}.csv".format(drrDir, tID, tID)
     edgePoints = [None] * len(config["test-set"]["outlines"])
     for f, file in enumerate(config["test-set"]["outlines"]):
       file_re = config["test-set"]["outlines"][f].format(tID, tID)
@@ -933,12 +924,15 @@ if __name__ == "__main__":
     if len(edgePoints) == 1:
       edgePoints = edgePoints[f]
 
-    # edge points in units of mm
-    # for some reason spacing_xr[[0,1]] gives correct height of edge map?
-    # print("check height", edgePoints[:, 1].max() - edgePoints[:, 1].min())
-    # print("check width", edgePoints[:, 0].max() - edgePoints[:, 0].min())
+    # debug checks to show initial alignment of image with edge map, 
+    # and mean shape with edge map
     if debug:
       if config["training"]["num_imgs"] == 1:
+        # for plotting image in same ref frame as the edges
+        axes = config["training"]["img_axes"][0]
+        extent = [imgCoords[:,axes[0]].min(), imgCoords[:,axes[0]].max(),
+                  imgCoords[:,axes[1]].min(), imgCoords[:,axes[1]].max()]
+        
         fig, ax = plt.subplots(1, 2)
         ax[0].imshow(img, cmap="gray", extent=extent)
         ax[0].scatter(edgePoints[:, 0], edgePoints[:, 1], s=2)
@@ -947,23 +941,16 @@ if __name__ == "__main__":
         plt.show()
       else:
         for i in range(0, config["training"]["num_imgs"]):
-          extent = [
-            -img[i].shape[1]
-            / 2.0
-            * spacing_xr[config["training"]["img_axes"][i][0]],
-            img[i].shape[1]
-            / 2.0
-            * spacing_xr[config["training"]["img_axes"][i][0]],
-            -img[i].shape[0]
-            / 2.0
-            * spacing_xr[config["training"]["img_axes"][i][1]],
-            img[i].shape[0]
-            / 2.0
-            * spacing_xr[config["training"]["img_axes"][i][1]],
-          ]
+          img_ax_i = config["training"]["img_axes"][i]
+          extent = [imgCoords[:,img_ax_i[0]].min(), 
+                    imgCoords[:,img_ax_i[0]].max(),
+                    imgCoords[:,img_ax_i[1]].min(), 
+                    imgCoords[:,img_ax_i[1]].max()]
+
           fig, ax = plt.subplots(1, 2)
           ax[0].imshow(img[i], cmap="gray", extent=extent)
           ax[0].scatter(edgePoints[i][:, 0], edgePoints[i][:, 1], s=2)
+          ax[1].scatter(edgePoints[i][:, 0], edgePoints[i][:, 1], s=2)
           ax[1].scatter(
             meanArr[:, config["training"]["img_axes"][i][0]],
             meanArr[:, config["training"]["img_axes"][i][1]],
@@ -972,16 +959,6 @@ if __name__ == "__main__":
           )
           plt.show()
 
-    # # fig, ax = plt.subplots(2)
-    # # ax[1].scatter(meanArr[:,0], meanArr[:,2],s=1, c="black")
-    # # ax[1].scatter(edgePoints[:,0], edgePoints[:,1],s=2, c="blue")
-    # plt.imshow(img,cmap="gray", extent=extent)
-    # plt.scatter(lmProjDef[10][:,0],
-    #             lmProjDef[10][:,2]-lmProjDef[10,:,2].mean(),
-    #             s=10)
-    # plt.show()
-
-    # inputCoords = meanArr.copy()
     # declare posterior shape model class
     assam = RespiratoryReconstructSSAM(
       shape=inputCoords,
@@ -1251,13 +1228,9 @@ if __name__ == "__main__":
     #   plt.scatter(outShape[:, axes[0]], outShape[:, axes[0]], s=2, c="black")
     #   plt.savefig("images/reconstruction/{}.png".format(tag), dpi=200)
     # else:
-    for i, axes in enumerate(assam.imgCoords_axes):
-      extent = [
-        -img.reshape(-1, 500, 500)[i].shape[1] / 2.0 * spacing_xr[axes[0]],
-        img.reshape(-1, 500, 500)[i].shape[1] / 2.0 * spacing_xr[axes[0]],
-        -img.reshape(-1, 500, 500)[i].shape[0] / 2.0 * spacing_xr[axes[1]],
-        img.reshape(-1, 500, 500)[i].shape[0] / 2.0 * spacing_xr[axes[1]],
-      ]
+    for i, axes in enumerate(config["training"]["img_axes"]):
+      extent = [imgCoords[:,axes[0]].min(), imgCoords[:,axes[0]].max(),
+                imgCoords[:,axes[1]].min(), imgCoords[:,axes[1]].max()]
       plt.close()
       plt.imshow(img.reshape(-1, 500, 500)[i], cmap="gray", extent=extent)
       plt.scatter(outShape[:, axes[0]], outShape[:, axes[1]], s=2, c="black")
