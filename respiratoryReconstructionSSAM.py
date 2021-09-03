@@ -249,27 +249,20 @@ class RespiratoryReconstructSSAM:
     print('pose and scale off')
     airway_morphed = all_morphed[self.lmOrder["Airway"]]
     # -check shape has not moved to be larger than XR or located outside XR
-    # outside_bounds = np.any((all_morphed[:,2]>self.imgCoords[:,1].max())
-    #                         | (all_morphed[:,2]<self.imgCoords[:,1].min())
-    #                         | (all_morphed[:,0]>self.imgCoords[:,0].max())
-    #                         | (all_morphed[:,0]<self.imgCoords[:,0].min())
-    #                         )
     outside_bounds = np.any(
-      (all_morphed[:, 2].min() < self.imgCoords[:, 2].min())
-      | (all_morphed[:, 0].max() > self.imgCoords[:, 0].max())
-      | (all_morphed[:, 0].max()< self.imgCoords[:, 0].min())
+      (all_morphed[:, 0].max() > self.imgCoords[:, 0].max())
+      | (all_morphed[:, 0].min() < self.imgCoords[:, 0].min())
+      | (all_morphed[:, 1].max() > self.imgCoords[:, 1].max())
+      | (all_morphed[:, 1].min() < self.imgCoords[:, 1].min())
+      | (all_morphed[:, 2].min() < self.imgCoords[:, 2].min())
     )
 
-    self.scale = scale  # -set globally to call in fitTerm
-    # -intialise
-    keyEdgeDists = 0
-    fit = 0
-    # -get losses
+    self.scale = copy(scale)  # -set globally to call in fitTerm
     lobe_morphed = dict.fromkeys(self.lobes)
     for lobe in self.lobes:
       lobe_morphed[lobe] = all_morphed[self.lmOrder[lobe]]
+    # get losses
     fit = self.fitTerm(xRay, lobe_morphed, shapenorms)
-
     loss_anatomicalShadow = 0.
     if self.number_of_imgs > 1:
       density_t = [None] * self.number_of_imgs
@@ -277,17 +270,19 @@ class RespiratoryReconstructSSAM:
         density_t[i] = self.getDensity(
           all_morphed, self.img[i], self.imgCoords, axes
         )
-        loss_anatomicalShadow += self.c_anatomical * self.anatomicalShadow(
-          self.img_local,
-          self.imgCoords[:, axes],
-          airway_morphed,
-          self.lmOrder,
-          self.projLM_ID_multipleproj[i]["Airway"],
-          kernel_distance=self.kernel_distance,
-          kernel_radius=self.kernel_radius,
-          axes=axes,
-        )
-
+        # can turn off anatomical shadow by setting coeff to 0
+        # coeff/2 as we want to keep weighting same relative to other losses
+        if self.c_anatomical != 0:
+          loss_anatomicalShadow += self.c_anatomical/2 * self.anatomicalShadow(
+            self.img_local,
+            self.imgCoords[:, axes],
+            airway_morphed,
+            self.lmOrder,
+            self.projLM_ID_multipleproj[i]["Airway"],
+            kernel_distance=self.kernel_distance,
+            kernel_radius=self.kernel_radius,
+            axes=axes,
+          )
       # convert list to array
       # change from shape N_imgs, N_lms -> N_lms, N_imgs
       # density_t = np.array(density_t).T
@@ -296,16 +291,18 @@ class RespiratoryReconstructSSAM:
       density_t = self.getDensity(
         all_morphed, self.img, self.imgCoords, self.imgCoords_axes
       ).reshape(-1, 1)
-      loss_anatomicalShadow += self.c_anatomical * self.anatomicalShadow(
-        self.img_local,
-        self.imgCoords[:, self.imgCoords_axes[0]],
-        airway_morphed,
-        self.lmOrder,
-        self.projLM_ID["Airway"],
-        kernel_distance=self.kernel_distance,
-        kernel_radius=self.kernel_radius,
-        axes=self.imgCoords_axes[0],
-      )
+
+      if self.c_anatomical != 0:
+        loss_anatomicalShadow += self.c_anatomical * self.anatomicalShadow(
+          self.img_local,
+          self.imgCoords[:, self.imgCoords_axes[0]],
+          airway_morphed,
+          self.lmOrder,
+          self.projLM_ID["Airway"],
+          kernel_distance=self.kernel_distance,
+          kernel_radius=self.kernel_radius,
+          axes=self.imgCoords_axes[0],
+        )
 
     # change so density at landmark location is scaled same as modelled density
     # density_t -= density_t.mean(axis=0)
@@ -328,37 +325,29 @@ class RespiratoryReconstructSSAM:
       print("\tfit loss",fit)
       print("\tdensity loss", densityFit)
       print("\tprior loss", prior)  # round(prior,4))
-    # self.c_edge = 0.2
     tallest_pt = airway_morphed[np.argmax(airway_morphed[:, 2])]
-    # if self.c_grad != 0.0:
-    #   gradFit = self.gradientTerm(airway_morphed, self.imgGrad, self.imgCoords)
 
     top_dist = 1.0 - np.exp(
       -1.0 * abs(tallest_pt[2] - self.imgCoords[:, 2].max()) / 5.0
     )
 
+    # add all loss contributions together
     E = (
       (self.c_prior * prior) + (self.c_dense * densityFit) + (self.c_edge * fit)
     )
-    # E = (self.c_dense * densityFit) + (self.c_edge * fit)
-    # E = (
-    #   (self.c_edge * fit)
-    # )
-    # if self.c_grad != 0.0:
-    #   E += self.c_grad * gradFit
     E += top_dist * 1.0
     E += loss_anatomicalShadow
     print("top dist", top_dist)
-    if not self.quiet:
-      print("anatomical shadow and top dist off")
+
     if outside_bounds and self.optIter > 100:
       # as we use max value from loss log, make sure this is only after 100
       #   iterations, so the max value will not be sensitive to outliers
+      E += max(self.lossLog)*0.2
       if not self.quiet:
         print("OUTSIDE OF BOUNDS")
-      E += max(self.lossLog)*0.2
     print("\ttotal loss", E)
 
+    # return debugging plot of outline overlaid on image
     if self.optIter % self.plot_freq == 0: #and not self.quiet:
       if self.number_of_imgs == 1:
         self.overlayAirwayOnXR(self.img, all_morphed, scale, pose)
@@ -730,20 +719,20 @@ class RespiratoryReconstructSSAM:
         )
     else:
       # recommendation = optimizer.minimize(objective)
-      lossLog = []
+      self.lossLog = []
       recommendation = optimizer.provide_recommendation()
       for _ in range(optimizer.budget):
         x = optimizer.ask()
         loss = objective(*x.args, **x.kwargs)
         optimizer.tell(x, loss)
-        lossLog.append(loss)
+        self.lossLog.append(loss)
     recommendation = (
       optimizer.provide_recommendation()
     )  # -update recommendation
 
     tag = ""
     utils.plotLoss(
-      lossLog, stage=self.optimiseStage, wdir="images/reconstruction/"
+      self.lossLog, stage=self.optimiseStage, wdir="images/reconstruction/"
     )  # -plot loss
 
     optOut = dict.fromkeys(["pose", "scale", "b"])
@@ -816,16 +805,14 @@ class RespiratoryReconstructSSAM:
     return E_prior
 
   def overlayAirwayOnXR(self, img, coords, scale, pos, tag=""):
-    extent = [
-      -self.img.shape[1] / 2.0 * self.spacing_xr[0],
-      self.img.shape[1] / 2.0 * self.spacing_xr[0],
-      -self.img.shape[0] / 2.0 * self.spacing_xr[2],
-      self.img.shape[0] / 2.0 * self.spacing_xr[2],
-    ]
+    extent = [self.imgCoords[:,self.imgCoords_axes[0][0]].min(),
+              self.imgCoords[:,self.imgCoords_axes[0][0]].max(),
+              self.imgCoords[:,self.imgCoords_axes[0][1]].min(),
+              self.imgCoords[:,self.imgCoords_axes[0][1]].max()]
     plt.close()
     plt.imshow(img, cmap="gray", extent=extent)
     plt.scatter(
-      self.xRay[:, 0], self.xRay[:, 1], s=4, c="black"
+      self.xRay[0][:, 0], self.xRay[0][:, 1], s=4, c="black"
     )  # , alpha=0.2)
     # plt.scatter(coords[self.projLM_IDAll,0],
     #             coords[self.projLM_IDAll,2],
@@ -864,32 +851,25 @@ class RespiratoryReconstructSSAM:
     return None
 
   def overlayAirwayOnXR_multipleimgs(self, img, coords, scale, pos, tag=""):
-    for i, im_i in enumerate(img):
-      extent = [
-        -im_i.shape[1] / 2.0 * self.spacing_xr[self.imgCoords_axes[i][0]],
-        im_i.shape[1] / 2.0 * self.spacing_xr[self.imgCoords_axes[i][0]],
-        -im_i.shape[0] / 2.0 * self.spacing_xr[self.imgCoords_axes[i][1]],
-        im_i.shape[0] / 2.0 * self.spacing_xr[self.imgCoords_axes[i][1]],
-      ]
+    for i, (im_i, axes) in enumerate(zip(img, self.imgCoords_axes)):
+      extent = [self.imgCoords[:,axes[0]].min(),
+                self.imgCoords[:,axes[0]].max(),
+                self.imgCoords[:,axes[1]].min(),
+                self.imgCoords[:,axes[1]].max()]
       plt.close()
       plt.imshow(im_i, cmap="gray", extent=extent)
-      plt.scatter(
-        self.xRay[i][:, 0], self.xRay[i][:, 1], s=4, c="black"
-      ) 
+      plt.scatter(self.xRay[i][:, 0], self.xRay[i][:, 1], s=4, c="black")
       for key in self.projLM_ID.keys():
-        # if key == 'RML':
-        #   continue
-        # else:
         projLM_index = self.projLM_ID_multipleproj[i][key]
-        # print(key, projLM_key)
-        plt.scatter(
-          # coords[self.lmOrder[key]][projLM_key, 0],
-          # coords[self.lmOrder[key]][projLM_key, 2],
-          coords[self.lmOrder[key]][projLM_index, self.imgCoords_axes[i][0]],
-          coords[self.lmOrder[key]][projLM_index, self.imgCoords_axes[i][1]],
-          s=8,
-          c="yellow",
-        )
+        if key not in self.shapes_to_skip_fitting[i]:
+          plt.scatter(
+            # coords[self.lmOrder[key]][projLM_key, 0],
+            # coords[self.lmOrder[key]][projLM_key, 2],
+            coords[self.lmOrder[key]][projLM_index, axes[0]],
+            coords[self.lmOrder[key]][projLM_index, axes[1]],
+            s=8,
+            c="yellow",
+          )
       # formatting to remove whitespace!
       plt.gca().set_axis_off()
       plt.subplots_adjust(top=1, bottom=0, right=1, left=0, hspace=0, wspace=0)
@@ -897,7 +877,9 @@ class RespiratoryReconstructSSAM:
       plt.gca().xaxis.set_major_locator(plt.NullLocator())
       plt.gca().yaxis.set_major_locator(plt.NullLocator())
       plt.savefig(
-        "images/reconstruction/debug/img{}-iter{}{}.png".format(i, str(self.optIter), tag),
+        "images/reconstruction/debug/img{}-iter{}{}.png".format(
+          i, str(self.optIter), tag
+        ),
         bbox_inches="tight",
         pad_inches=0,
       )
