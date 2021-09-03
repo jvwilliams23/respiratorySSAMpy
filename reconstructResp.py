@@ -730,6 +730,8 @@ if __name__ == "__main__":
     testIm.append(drrArr[t])
     testLM.append(copy(landmarks[t]))
     lmProj_test.append(copy(landmarks[t]))
+
+    """
     # remove test data from train data
     patientIDs.pop(t)
     origin = np.delete(origin, t, axis=0)
@@ -737,6 +739,7 @@ if __name__ == "__main__":
     drrArr = np.delete(drrArr, t, axis=0)
     landmarks = np.delete(landmarks, t, axis=0)
     lmProj = np.delete(lmProj, t, axis=0)
+    """
 
   if randomise_testing:
     print("test IDs are", testID)
