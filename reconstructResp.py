@@ -283,13 +283,14 @@ def density_comparison(
   """
   density_at_lm_out = assam.getDensity(out_lms, img, imgCoords_out, axes=axes)
   density_at_lm_gt = assam.getDensity(gt_lms, img, imgCoords_gt, axes=axes)
-  fig, ax = plt.subplots(1, 2, figsize=(16 / 2.54, 10 / 2.54))
+  plt.close()
+  fig, ax = plt.subplots(1, 2, figsize=(16 / 2.54, 8 / 2.54))
   ax[0].scatter(
     out_lms[:, axes[0]],
     out_lms[:, axes[1]],
     c=density_at_lm_out,
     cmap="gray",
-    s=5,
+    s=2,
     vmin=-2,
     vmax=2,
   )
@@ -298,7 +299,7 @@ def density_comparison(
     gt_lms[:, axes[1]],
     c=density_at_lm_gt,
     cmap="gray",
-    s=5,
+    s=2,
     vmin=-2,
     vmax=2,
   )
@@ -637,7 +638,7 @@ if __name__ == "__main__":
   lmOrder["LUNGS"] = []
   for shape in shapes:
     lmOrder[shape] = np.loadtxt(
-      landmarkDir + "landmarkIndex{}.txt".format(shape), dtype=int
+      landmarkDir + f"landmarkIndex{shape}.txt", dtype=int
     )
     if shape in lobes:
       lmOrder["LUNGS"].extend(list(lmOrder[shape]))
@@ -853,7 +854,7 @@ if __name__ == "__main__":
       header="x, y, z",
     )
     for lobe in lobes:
-      print("making {} template mesh".format(lobe))
+      print(f"making {lobe} template mesh")
       template_lmFile = "allLandmarks/allLandmarks8684.csv"
       lm_template = np.loadtxt(
         template_lmFile, skiprows=1, delimiter=",", usecols=[0, 1, 2]
@@ -869,27 +870,28 @@ if __name__ == "__main__":
         sigma=0.3,
         quiet=args.quiet,
       )
-      mean_lobe_file_out = templateDir + "mean{}.stl".format(lobe)
+      mean_lobe_file_out = templateDir + f"mean{lobe}.stl"
       morph_lobe.mesh_target.write(mean_lobe_file_out)
       np.savetxt(
-        templateDir + "mean{}.csv".format(lobe),
+        templateDir + f"mean{lobe}.csv",
         meanArr[lmOrder[lobe]],
         delimiter=",",
         header="x, y, z",
       )
 
   for key in shapes:
-    mean_shape_file = templateDir + "mean{}.stl".format(key)
-    assert len(glob(mean_shape_file)) > 0, "file {} does not exist!".format(
-      mean_shape_file
-    )
+    mean_shape_file = templateDir + f"mean{key}.stl"
+    assert (
+      len(glob(mean_shape_file)) > 0
+    ), f"file {mean_shape_file} does not exist!"
+
     mean_mesh[key] = v.load(mean_shape_file).computeNormals()
     # mesh_template_lms[key] =
 
   # reorder unstructured stl file to be coherent w/ model and landmarks
   # extract mesh data (coords, normals and faces)
   for key in shapes:
-    print("loading {} mesh".format(key))
+    print(f"loading {key} mesh")
     if not args.quiet:
       print("original num cells", len(mean_mesh[key].faces()))
     if key == "Airway":
@@ -917,6 +919,7 @@ if __name__ == "__main__":
     surfCoords_mm[key] = surfCoords_mm[key][surfToLMorder[key]]
 
   tagBase = copy(tag)
+  save_initial_coords = copy(inputCoords)
   for t, (tID, tLM, tImg, tOrig, tSpace) in enumerate(
     zip(testID, testLM, testIm, testOrigin, testSpacing)
   ):
@@ -1004,6 +1007,7 @@ if __name__ == "__main__":
       img_names=config["training"]["img_names"],
       shapes_to_skip_fitting=config["training"]["shapes_to_skip_fit"],
       plot_freq=args.plot_freq,
+      plot_tag=f"case{tID}"
     )
     assam.spacing_xr = spacing_xr
     # import variables to class
@@ -1100,11 +1104,9 @@ if __name__ == "__main__":
               assam.projLM_ID_multipleproj[proj_ind][key][:10],
             )
 
-    print("time taken to get projected points", round(time() - t1), "s")
+    print(f"time taken to get projected points {round(time() - t1)} s")
     print(
-      "finished getting projected landmarks. Time taken = {} s".format(
-        time() - t1
-      )
+      f"finished getting projected landmarks. Time taken = {time() - t1} s"
     )
 
     assam.fissureLM_ID = 0
@@ -1113,7 +1115,7 @@ if __name__ == "__main__":
     assam.projLM_IDAll = []
     pointCounter = 0
     for key in assam.projLM_ID.keys():
-      print("\n{}".format(key))
+      print(f"\n{key}")
       if key not in ["Airway", "RML"]:
         assam.projLM_IDAll.extend(
           list(np.array(assam.projLM_ID[key]) + pointCounter)
@@ -1162,17 +1164,30 @@ if __name__ == "__main__":
       [
         (-20, 20),
         (-20, 20),
-        (0.7, 1.3),
-        # (0.4, 2.0),  # (optTrans_new["scale"]*0.9, optTrans_new["scale"]*1.1),
+        # (0.7, 1.3),
+        (0.4, 2.0),  # (optTrans_new["scale"]*0.9, optTrans_new["scale"]*1.1),
         (-3, 3),
       ]
     )
+    # bounds = np.array(
+    #   [
+    #     (-0.0, 0.01),
+    #     (-0.0, 0.01),
+    #     # (0.7, 1.3),
+    #     (1.0, 1.01),  # (optTrans_new["scale"]*0.9, optTrans_new["scale"]*1.1),
+    #     (-3, 3),
+    #   ]
+    # )
 
     # initialise parameters that control optimisation process
     assam.optimiseStage = "both"  # tell class to optimise shape and pose
     assam.optIterSuc, assam.optIter = 0, 0
     assam.scale = optTrans_new["scale"]
     assert len(assam.projLM_ID) != 0, "no projected landmarks"
+
+    # for debugging input data, run only up to just before optimisation starts
+    if args.load_data_only:
+      exit()
 
     # perform optimisation
     optAll = assam.optimiseAirwayPoseAndShape(
@@ -1253,7 +1268,7 @@ if __name__ == "__main__":
       plt.close()
       plt.imshow(img.reshape(-1, 500, 500)[i], cmap="gray", extent=extent)
       plt.scatter(outShape[:, axes[0]], outShape[:, axes[1]], s=2, c="black")
-      plt.savefig("images/reconstruction/{}-view{}.png".format(tag, i), dpi=200)
+      plt.savefig(f"images/reconstruction/{tag}-view{i}.png", dpi=200)
 
     # shape parameters for ground truth
     b_gt = getShapeParameters(
@@ -1282,11 +1297,11 @@ if __name__ == "__main__":
       # plot
       density_error_for_point_cloud(
         outShape,
-        ssam.sam.imgCoords_all,
+        imgCoords,
         # img[i],
         tImg.reshape(-1, 500, 500)[i],
         density_from_model[:, i],
-        tag="reconstructionFromModel_view{}".format(i),
+        tag=f"reconstructionFromModel_view{i}",
         axes=config["training"]["img_axes"][i],
       )
 
@@ -1300,7 +1315,7 @@ if __name__ == "__main__":
         # img[i],
         tImg.reshape(-1, 500, 500)[i],
         density_from_model[:, i],
-        tag="groundTruthFromModel_view{}".format(i),
+        tag=f"groundTruthFromModel_view{i}",
         axes=config["training"]["img_axes"][i],
       )
 
@@ -1310,7 +1325,7 @@ if __name__ == "__main__":
         tImg.reshape(-1, 500, 500)[i],
         imgCoords,
         imgCoords,
-        tag="_view{}".format(i),
+        tag=f"_view{i}",
         axes=config["training"]["img_axes"][i],
       )
 
