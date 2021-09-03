@@ -518,6 +518,22 @@ if __name__ == "__main__":
   shapes = ["Airway", "RUL", "RML", "RLL", "LUL", "LLL"]
   # shapes = ['Airway']
   lobes = ["RUL", "RML", "RLL", "LUL", "LLL"]
+
+  # clean up shapes not given as input args
+  delInd = []
+  for i, lobe in enumerate(lobes):
+    if lobe not in args.shapes.split():
+      delInd.append(i)
+  for ind in delInd[::-1]:
+    lobes.pop(ind)
+  delInd = []
+  for i, shape in enumerate(shapes):
+    if shape not in args.shapes.split():
+      delInd.append(i)
+  for ind in delInd[::-1]:
+    shapes.pop(ind)
+  del delInd
+
   # numbering for each lobe in file
   lNums = {"RUL": "4", "RML": "5", "RLL": "6", "LUL": "7", "LLL": "8"}
 
