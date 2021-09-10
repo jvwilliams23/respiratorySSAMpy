@@ -335,17 +335,19 @@ length_diff_list = []
 length_diff_percent_list = []
 gen_list = []
 for edge in out_graph_w_lengths.edges:
+  generation = gt_graph_w_diameter.edges[edge]['generation']
   length_out = round(out_graph_w_lengths.edges[edge]['length'], 4)
   length_gt = round(gt_graph_w_lengths.edges[edge]['length'], 4)
   diff = round(length_out-length_gt, 4)
   diff_pct = round(diff/length_gt*100, 4)
-  print(length_gt, length_out, diff, round(diff/length_gt*100, 4),'%')
+  if generation < 2:
+    print(length_gt, length_out, diff, round(diff/length_gt*100, 4),'%')
   # print()
   length_gt_list.append(length_gt)
   length_out_list.append(length_out)
   length_diff_list.append(diff)
   length_diff_percent_list.append(diff_pct)
-  gen_list.append(out_graph_w_lengths.edges[edge]['generation'])
+  gen_list.append(generation)
 if args.write:
   np.savetxt("morphologicalAnalysis/lengthStats{}.txt".format(args.caseID),
             np.c_[gen_list, length_gt_list, length_out_list, 
@@ -362,17 +364,20 @@ diameter_diff_list = []
 diameter_diff_percent_list = []
 gen_list = []
 for edge in out_graph_w_lengths.edges:
+  generation = gt_graph_w_diameter.edges[edge]['generation']
   diameter_out = round(out_graph_w_diameter.edges[edge]['diameter'], 4)
   diameter_gt = round(gt_graph_w_diameter.edges[edge]['diameter'], 4)
   diff = round(diameter_out-diameter_gt, 4)
   diff_pct = round(diff/diameter_gt*100, 4)
-  print(diameter_gt, diameter_out, diff, round(diff/diameter_gt*100, 4),'%')
+
+  if generation < 2:
+    print(diameter_gt, diameter_out, diff, round(diff/diameter_gt*100, 4),'%')
   # print()
   diameter_gt_list.append(diameter_gt)
   diameter_out_list.append(diameter_out)
   diameter_diff_list.append(diff)
   diameter_diff_percent_list.append(diff_pct)
-  gen_list.append(gt_graph_w_diameter.edges[edge]['generation'])
+  gen_list.append(generation)
 if args.write:
   np.savetxt("morphologicalAnalysis/diameterStats{}.txt".format(args.caseID),
             np.c_[gen_list, diameter_gt_list, diameter_out_list, 
@@ -450,25 +455,30 @@ lateral_dist_diff_list = []
 lateral_dist_diff_percent_list = []
 gen_list = []
 for edge in out_branch_graph.edges:
+  generation = out_graph_w_lengths.edges[edge]['generation']
   # get all landmarks along branch segment
   nodes = list(nx.all_simple_paths(out_landmark_graph, edge[0], edge[1]))[0]
   # fit splines to landmarks to smooth
   out_spline = graph_to_spline(out_landmark_graph, nodes)
   gt_spline = graph_to_spline(gt_landmark_graph, nodes)
+  # get lengths for normalising
+  length_out = out_graph_w_lengths.edges[edge]["length"]
+  length_gt = gt_graph_w_lengths.edges[edge]["length"]
   # find max lateral dist from central axis
-  lateral_dist_out = round(lateral_dist_from_axis(out_spline), 4)
-  lateral_dist_gt = round(lateral_dist_from_axis(gt_spline), 4)
+  lateral_dist_out = round(lateral_dist_from_axis(out_spline)/length_out, 4)
+  lateral_dist_gt = round(lateral_dist_from_axis(gt_spline)/length_gt, 4)
   # get difference in mm and percent for terminal
-  diff =  round(lateral_dist_out - lateral_dist_gt, 4)
+  diff = round(lateral_dist_out - lateral_dist_gt, 4)
   diff_pct = round(diff/lateral_dist_gt*100, 4)
 
-  print(lateral_dist_gt, lateral_dist_out, diff, round(diff/lateral_dist_gt*100, 4),'%')
+  if generation < 2:
+    print(lateral_dist_gt, lateral_dist_out, diff, round(diff/lateral_dist_gt*100, 4),'%')
   # save results to list for writing
   lateral_dist_gt_list.append(lateral_dist_gt)
   lateral_dist_out_list.append(lateral_dist_out)
   lateral_dist_diff_list.append(diff)
   lateral_dist_diff_percent_list.append(diff_pct)
-  gen_list.append(out_graph_w_lengths.edges[edge]['generation'])
+  gen_list.append(generation)
 
 if args.write:
   np.savetxt("morphologicalAnalysis/lateralDistanceStats{}.txt".format(args.caseID),
