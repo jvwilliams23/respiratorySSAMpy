@@ -137,6 +137,54 @@ def getBranchAngle(graph):
                                                                   node)
   return graph
 
+def graph_to_spline(graph, nodes, npoints=20):
+  """
+  Convert graph nodes to coordinates along a spline
+
+  Parameters
+  ----------
+  graph (nx.Graph): graph of landmarks
+  nodes (list): nodes along the current branch segment to fit spline to
+  npoints (int): number of points to sample spline with
+
+  Returns
+  -------
+  spline_path (np.ndarray, npoints, 3): spline fitted to landmarks
+  """
+  pos_list = []
+  for node in nodes:
+    pos_list.append(graph.nodes[node]['pos'])
+  pos_list = np.array(pos_list)
+  indexes = np.unique(pos_list, return_index=True, axis=0)[1]
+  pos_list = np.array([pos_list[index] for index in sorted(indexes)])
+  x,y,z = pos_list[:,0], pos_list[:,1], pos_list[:,2]
+
+  spl_xticks, _ = interpolate.splprep([x,y,z], 
+                                          k=3, s=10.0)
+  # generate the new interpolated dataset. sample spline to 100 points
+  spline_path = interpolate.splev(np.linspace(0,1,npoints), spl_xticks, der=0)
+  spline_path = np.vstack(spline_path).T
+  return spline_path
+
+def spline_curvature(points):
+  """
+  Get curvature at each point along a curve
+
+  Parameters
+  ----------
+  points (np.ndarray, N,2): x-y points in space of a 2D curve
+
+  Returns
+  -------
+  curv_abs (np.array, N): curvature in 1/mm at each point on curve. 
+    take absolute value to ignore sign
+  """
+  points = list(zip(points[:,0], points[:,1]))
+  curv = GradientCurvature(trace=points)
+  curv.calculate_curvature()
+  curv_abs = abs(curv.curvature)
+  return curv_abs
+
 lm_index_file = 'allLandmarks/landmarkIndexAirway.txt'
 airway_lm_index = np.loadtxt(lm_index_file).astype(int)
 out_dir = 'outputLandmarks/{filename}{caseID}_{key}.csv'
@@ -314,32 +362,6 @@ if args.write:
             np.c_[gen_list, angle_gt_list, angle_out_list, angle_diff_list, angle_diff_percent_list],
             header="bifurcation level\tground truth\treconstruction\tdifference [degrees]\tdifference [%]",
             fmt="%4f")
-
-
-def graph_to_spline(graph, nodes, npoints=20):
-  pos_list = []
-  for node in nodes:
-    pos_list.append(graph.nodes[node]['pos'])
-  pos_list = np.array(pos_list)
-  indexes = np.unique(pos_list, return_index=True, axis=0)[1]
-  pos_list = np.array([pos_list[index] for index in sorted(indexes)])
-  x,y,z = pos_list[:,0], pos_list[:,1], pos_list[:,2]
-
-  spl_xticks, _ = interpolate.splprep([x,y,z], 
-                                          k=3, s=10.0)
-  # generate the new interpolated dataset. sample spline to 100 points
-  spline_path = interpolate.splev(np.linspace(0,1,npoints), spl_xticks, der=0)
-  spline_path = np.vstack(spline_path).T
-  return spline_path
-
-
-def spline_curvature(points):
-  points = list(zip(points[:,0], points[:,1]))
-  curv = GradientCurvature(trace=points)
-  curv.calculate_curvature()
-  curv_abs = (curv.curvature)
-  return curv_abs
-
 
 # print()
 # print('curvature stats below')
