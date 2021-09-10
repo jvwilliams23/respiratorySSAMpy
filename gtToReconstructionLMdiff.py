@@ -261,8 +261,6 @@ print(pd.DataFrame(dist).describe())
 # gt_pts = v.Points(gt_lm, r=4).c('black')
 out_pts = v.Points(out_lm, r=4).cmap('hot', dist)
 outliers = v.Points(out_lm[dist>10], r=10).c('black')
-if args.visualise:
-  v.show(gt_mesh.alpha(0.2), out_pts, outliers)
 # plt.hist(dist, bins=100)
 # plt.xlabel('landmark-to-landmark distance [mm]')
 # plt.show()
@@ -291,7 +289,7 @@ out_branch_graph = assignNewPositionsToTemplateGraph(template_bgraph, out_lm)
 gt_branch_graph = assignNewPositionsToTemplateGraph(template_bgraph, gt_lm)
 
 cols = ['black', 'blue', 'green', 'red', 'pink', 'yellow']
-vp = v.Plotter()
+# vp = v.Plotter()
 # compute diameter from circumference at cross-sections
 diameter_pts = gt_lm[diameter_ids][:num_diameter_pts]
 diameter = []
@@ -305,7 +303,7 @@ for node in gt_landmark_graph.nodes:
   diameter = circumference/np.pi
   gt_landmark_graph.nodes[node]['diameter'] = diameter
 
-  vp+=v.Points(gt_diameter_pts, r=3).c(cols[np.random.randint(len(cols))])
+  # vp+=v.Points(gt_diameter_pts, r=3).c(cols[np.random.randint(len(cols))])
 
   out_diameter_pts = out_lm[npID+1:npID+1+num_diameter_pts]
   circumference = 0
@@ -341,7 +339,7 @@ for edge in out_graph_w_lengths.edges:
   diff = round(length_out-length_gt, 4)
   diff_pct = round(diff/length_gt*100, 4)
   if generation < 2:
-    print(length_gt, length_out, diff, round(diff/length_gt*100, 4),'%')
+    print(length_gt, length_out, diff, diff_pct, '%')
   # print()
   length_gt_list.append(length_gt)
   length_out_list.append(length_out)
@@ -371,7 +369,7 @@ for edge in out_graph_w_lengths.edges:
   diff_pct = round(diff/diameter_gt*100, 4)
 
   if generation < 2:
-    print(diameter_gt, diameter_out, diff, round(diff/diameter_gt*100, 4),'%')
+    print(diameter_gt, diameter_out, diff, diff_pct,'%')
   # print()
   diameter_gt_list.append(diameter_gt)
   diameter_out_list.append(diameter_out)
@@ -404,7 +402,7 @@ for node in out_branch_graph.nodes:
     diff =  angle_out - angle_gt
     diff_pct = round(diff/angle_gt*100, 4)
 
-    print(angle_gt, angle_out, diff, round(diff/angle_gt*100, 4),'%')
+    print(angle_gt, angle_out, diff, diff_pct,'%')
     angle_gt_list.append(angle_gt)
     angle_out_list.append(angle_out)
     angle_diff_list.append(diff)
@@ -462,17 +460,18 @@ for edge in out_branch_graph.edges:
   out_spline = graph_to_spline(out_landmark_graph, nodes)
   gt_spline = graph_to_spline(gt_landmark_graph, nodes)
   # get lengths for normalising
-  length_out = out_graph_w_lengths.edges[edge]["length"]
-  length_gt = gt_graph_w_lengths.edges[edge]["length"]
+  diameter_out = out_graph_w_diameter.edges[edge]["diameter"]
+  diameter_gt = gt_graph_w_diameter.edges[edge]["diameter"]
   # find max lateral dist from central axis
-  lateral_dist_out = round(lateral_dist_from_axis(out_spline)/length_out, 4)
-  lateral_dist_gt = round(lateral_dist_from_axis(gt_spline)/length_gt, 4)
+  lateral_dist_out = round(lateral_dist_from_axis(out_spline), 4)
+  lateral_dist_gt = round(lateral_dist_from_axis(gt_spline), 4)
   # get difference in mm and percent for terminal
   diff = round(lateral_dist_out - lateral_dist_gt, 4)
-  diff_pct = round(diff/lateral_dist_gt*100, 4)
+  # diff_pct = round(diff/lateral_dist_gt*100, 4)
+  diff_pct = round(diff/diameter_gt*100, 4)
 
   if generation < 2:
-    print(lateral_dist_gt, lateral_dist_out, diff, round(diff/lateral_dist_gt*100, 4),'%')
+    print(lateral_dist_gt, lateral_dist_out, diff, diff_pct, '%')
   # save results to list for writing
   lateral_dist_gt_list.append(lateral_dist_gt)
   lateral_dist_out_list.append(lateral_dist_out)
@@ -486,6 +485,8 @@ if args.write:
             header="bifurcation level\tground truth\treconstruction\tdifference [mm]\tdifference [%]",
             fmt="%4f")
 
+if args.visualise:
+  v.show(gt_mesh.alpha(0.2), out_pts, outliers)
 
 # vp = v.Plotter()
 # for edge in out_branch_graph.edges:
