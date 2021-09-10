@@ -15,6 +15,9 @@ from sys import exit
 from scipy import interpolate
 from distutils.util import strtobool
 
+from pylab import cross,dot,inv
+
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--caseID', '-c',
                     default='8684', 
@@ -184,6 +187,51 @@ def spline_curvature(points):
   curv.calculate_curvature()
   curv_abs = abs(curv.curvature)
   return curv_abs
+
+def rotation_matrix_between_two_vectors(U,V):
+  """ Find the rotation matrix that aligns vec1 to vec2
+  :param vec1: A 3d "source" vector
+  :param vec2: A 3d "destination" vector
+  :return mat: A transform matrix (3x3) which when applied to vec1, aligns it with vec2.
+  """
+  W=cross(U,V)
+  A=np.array([U,W,cross(U,W)]).T
+  B=np.array([V,W,cross(V,W)]).T
+  if np.allclose(U,V):
+    return 'aligned'
+  else:
+    return dot(B,inv(A))
+
+def lateral_dist_from_axis(curve):
+  """
+  Find max lateral distance from a curve by aligning to origin, rotating
+  so the principal direction is aligned with an axis. Then can get max dist
+  from central axis.
+
+  Parameters
+  ----------
+  curve (np.ndarray, N, 3): coordinates along a curve
+
+  Returns
+  -------
+  maximum lateral distance (float) from the central axis of the curve
+  """
+  # centre curve at origin
+  curve -= curve[-1]
+  # get normal vector
+  curve_vec = curve[-1] - curve[0]
+  curve_vec /= np.sum(curve_vec**2)**0.5
+  # find which axis is the principal one (main direction of transport)
+  main_axis = np.argmax(abs(curve_vec))
+  align_vec = np.zeros(3)
+  align_vec[main_axis] += 1.
+  # rotate curve to be aligned with main/principal axis
+  rot = rotation_matrix_between_two_vectors(curve_vec, align_vec)
+  curve = rot.dot(curve.T).T
+  # delete main axis so distance only includes lateral components
+  new_curve = np.delete(curve, main_axis, axis=1)
+  lateral_dist = utils.euclideanDist(new_curve, np.zeros(2))
+  return lateral_dist.max() 
 
 lm_index_file = 'allLandmarks/landmarkIndexAirway.txt'
 airway_lm_index = np.loadtxt(lm_index_file).astype(int)
@@ -392,6 +440,42 @@ if args.write:
             np.c_[gen_list, curv_gt_list, curv_out_list, curv_diff_list, curv_diff_percent_list],
             header="bifurcation level\tground truth\treconstruction\tdifference [1/mm]\tdifference [%]",
             fmt="%4f")
+
+print()
+print('lateral distance stats below')
+# initialise lists to save output data to
+lateral_dist_gt_list = []
+lateral_dist_out_list = []
+lateral_dist_diff_list = []
+lateral_dist_diff_percent_list = []
+gen_list = []
+for edge in out_branch_graph.edges:
+  # get all landmarks along branch segment
+  nodes = list(nx.all_simple_paths(out_landmark_graph, edge[0], edge[1]))[0]
+  # fit splines to landmarks to smooth
+  out_spline = graph_to_spline(out_landmark_graph, nodes)
+  gt_spline = graph_to_spline(gt_landmark_graph, nodes)
+  # find max lateral dist from central axis
+  lateral_dist_out = round(lateral_dist_from_axis(out_spline), 4)
+  lateral_dist_gt = round(lateral_dist_from_axis(gt_spline), 4)
+  # get difference in mm and percent for terminal
+  diff =  round(lateral_dist_out - lateral_dist_gt, 4)
+  diff_pct = round(diff/lateral_dist_gt*100, 4)
+
+  print(lateral_dist_gt, lateral_dist_out, diff, round(diff/lateral_dist_gt*100, 4),'%')
+  # save results to list for writing
+  lateral_dist_gt_list.append(lateral_dist_gt)
+  lateral_dist_out_list.append(lateral_dist_out)
+  lateral_dist_diff_list.append(diff)
+  lateral_dist_diff_percent_list.append(diff_pct)
+  gen_list.append(out_graph_w_lengths.edges[edge]['generation'])
+
+if args.write:
+  np.savetxt("morphologicalAnalysis/lateralDistanceStats{}.txt".format(args.caseID),
+            np.c_[gen_list, lateral_dist_gt_list, lateral_dist_out_list, lateral_dist_diff_list, lateral_dist_diff_percent_list],
+            header="bifurcation level\tground truth\treconstruction\tdifference [mm]\tdifference [%]",
+            fmt="%4f")
+
 
 # vp = v.Plotter()
 # for edge in out_branch_graph.edges:
