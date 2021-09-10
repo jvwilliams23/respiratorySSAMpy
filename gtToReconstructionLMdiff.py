@@ -6,11 +6,13 @@ import numpy as np
 import pandas as pd 
 import vedo as v
 import userUtils as utils
+from userUtils import GradientCurvature
 import matplotlib.pyplot as plt
 from glob import glob
 import argparse
 import networkx as nx
 from sys import exit
+from scipy import interpolate
 from distutils.util import strtobool
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -176,8 +178,6 @@ def assignNewPositionsToTemplateGraph(template_graph, landmarks):
     graph_out.nodes[node]['pos'] = landmarks[npID]
   return graph_out
 
-print('TODO - get curvature per branch!')
-
 skel_ids = np.loadtxt('allLandmarks/landmarkIndexSkeleton.txt').astype(int)
 diameter_ids = ~np.isin(np.arange(0, len(gt_lm)), skel_ids)
 
@@ -230,7 +230,9 @@ gt_graph_w_diameter = getBranchDiameter(template_bgraph, gt_landmark_graph, gt_l
 out_graph_w_lengths = getBranchLength(template_bgraph, out_landmark_graph, out_lm)
 gt_graph_w_lengths = getBranchLength(template_bgraph, gt_landmark_graph, gt_lm)
 
+print()
 print('length stats below')
+print('gt    output   diff   rel error')
 length_gt_list = []
 length_out_list = []
 length_diff_list = []
@@ -241,9 +243,8 @@ for edge in out_graph_w_lengths.edges:
   length_gt = round(gt_graph_w_lengths.edges[edge]['length'], 4)
   diff = round(length_out-length_gt, 4)
   diff_pct = round(diff/length_gt*100, 4)
-  print('gt    output   diff   rel error')
   print(length_gt, length_out, diff, round(diff/length_gt*100, 4),'%')
-  print()
+  # print()
   length_gt_list.append(length_gt)
   length_out_list.append(length_out)
   length_diff_list.append(diff)
@@ -256,7 +257,9 @@ if args.write:
             header="bifurcation level\tground truth\treconstruction\tdifference [mm]\tdifference [%]",
             fmt="%4f")
 
-print('diameter stats')
+print()
+print('diameter stats below')
+print('gt    output   diff   rel error')
 diameter_gt_list = []
 diameter_out_list = []
 diameter_diff_list = []
@@ -267,9 +270,8 @@ for edge in out_graph_w_lengths.edges:
   diameter_gt = round(gt_graph_w_diameter.edges[edge]['diameter'], 4)
   diff = round(diameter_out-diameter_gt, 4)
   diff_pct = round(diff/diameter_gt*100, 4)
-  print('gt    output   diff   rel error')
   print(diameter_gt, diameter_out, diff, round(diff/diameter_gt*100, 4),'%')
-  print()
+  # print()
   diameter_gt_list.append(diameter_gt)
   diameter_out_list.append(diameter_out)
   diameter_diff_list.append(diff)
@@ -285,7 +287,7 @@ if args.write:
 out_branch_graph = getBranchAngle(out_branch_graph)
 gt_branch_graph = getBranchAngle(gt_branch_graph)
 
-
+print()
 print('branch angle stats below')
 # once have this data for few patients can make boxplot of GT and XR, 
 # compare statistical significance
@@ -312,6 +314,63 @@ if args.write:
             np.c_[gen_list, angle_gt_list, angle_out_list, angle_diff_list, angle_diff_percent_list],
             header="bifurcation level\tground truth\treconstruction\tdifference [degrees]\tdifference [%]",
             fmt="%4f")
+
+
+def graph_to_spline(graph, nodes, npoints=20):
+  pos_list = []
+  for node in nodes:
+    pos_list.append(graph.nodes[node]['pos'])
+  pos_list = np.array(pos_list)
+  indexes = np.unique(pos_list, return_index=True, axis=0)[1]
+  pos_list = np.array([pos_list[index] for index in sorted(indexes)])
+  x,y,z = pos_list[:,0], pos_list[:,1], pos_list[:,2]
+
+  spl_xticks, _ = interpolate.splprep([x,y,z], 
+                                          k=3, s=10.0)
+  # generate the new interpolated dataset. sample spline to 100 points
+  spline_path = interpolate.splev(np.linspace(0,1,npoints), spl_xticks, der=0)
+  spline_path = np.vstack(spline_path).T
+  return spline_path
+
+
+def spline_curvature(points):
+  points = list(zip(points[:,0], points[:,1]))
+  curv = GradientCurvature(trace=points)
+  curv.calculate_curvature()
+  curv_abs = (curv.curvature)
+  return curv_abs
+
+
+# print()
+# print('curvature stats below')
+curv_gt_list = []
+curv_out_list = []
+curv_diff_list = []
+curv_diff_percent_list = []
+gen_list = []
+for edge in out_branch_graph.edges:
+  # get all landmarks along branch segment
+  nodes = list(nx.all_simple_paths(out_landmark_graph, edge[0], edge[1]))[0]
+  # fit splines to landmarks to smooth
+  out_spline = graph_to_spline(out_landmark_graph, nodes)
+  gt_spline = graph_to_spline(gt_landmark_graph, nodes)
+  # get mean curvature per segment
+  curv_out = round(spline_curvature(out_spline[:,[0,2]]).mean(), 4)
+  curv_gt = round(spline_curvature(gt_spline[:,[0,2]]).mean(), 4)
+  diff = round(curv_out-curv_gt, 4)
+  # save curvature data
+  curv_gt_list.append(curv_gt)
+  curv_out_list.append(curv_out)
+  curv_diff_list.append(diff)
+  curv_diff_percent_list.append(diff_pct)
+  gen_list.append(out_graph_w_lengths.edges[edge]['generation'])
+
+if args.write:
+  np.savetxt("morphologicalAnalysis/curvatureStats{}.txt".format(args.caseID),
+            np.c_[gen_list, curv_gt_list, curv_out_list, curv_diff_list, curv_diff_percent_list],
+            header="bifurcation level\tground truth\treconstruction\tdifference [1/mm]\tdifference [%]",
+            fmt="%4f")
+
 # vp = v.Plotter()
 # for edge in out_branch_graph.edges:
 #   p1 = out_branch_graph.nodes[edge[0]]['pos']
