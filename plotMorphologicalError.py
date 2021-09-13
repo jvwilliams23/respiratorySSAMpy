@@ -40,6 +40,11 @@ parser.add_argument('--quiet', '-q',
                     type=strtobool,#, required=True,
                     help='Deliver quietly (no prints in terminal)'
                     )
+parser.add_argument('--cutoff_level', '-c',
+                    default=2, 
+                    type=int,#, required=True,
+                    help='do not show any generations above this value'
+                    )
 args = parser.parse_args()
 quiet = args.quiet
 
@@ -51,7 +56,10 @@ marker_list = ['o', 'v', 's', 'X', 'd', '.', '^']
 
 image_dir = 'images/reconstruction/morphologicalFigs/{}-'.format(date)
 
-parameters = ['diameter', 'length', 'angle']
+# parameters = ['diameter', 'length', 'angle']
+# units = ['mm', 'mm', 'degrees']
+parameters = ['diameter', 'lateralDistance', 'angle']
+titles = ['Diameter', 'Maximum lateral distance', 'Angle']
 units = ['mm', 'mm', 'degrees']
 
 sampleIDs = glob("{}/angle*.txt".format(args.dirname))
@@ -99,9 +107,10 @@ def floorNearestN(x, base=5):
     return base * floor(x/base)
 
 def bland_altman():
-  global sampleIDs, parameters, units, marker_list
+  global sampleIDs, parameters, units, marker_list, titles
   errors = [None]*len(parameters)
-  fig, ax = plt.subplots(1,3,figsize=(12,4))
+  # fig, ax = plt.subplots(1,3,figsize=(12,4))
+  fig, ax = plt.subplots(1,len(parameters), figsize=(12,4))
   for i, (param, unit) in enumerate(zip(parameters, units)):
     gt_val = []
     reconstructed_val = []
@@ -111,15 +120,19 @@ def bland_altman():
     for j, sample in enumerate(sampleIDs):
       error_file_data = np.loadtxt(param_file_name.format(param, sample),
                                     skiprows=1)
-      # drop trachea from length calcs as true length is unknown
-      if param == 'length':
-        error_file_data = error_file_data[1:]
-        label_start = 1 # offset marker list so consistent across plots
-        if not quiet: print(error_file_data)
-      else:
-        label_start = 0
+      # # drop trachea from length calcs as true length is unknown
+      # if param == 'length':
+      #   error_file_data = error_file_data[1:]
+      #   label_start = 1 # offset marker list so consistent across plots
+      #   if not quiet: print(error_file_data)
+      # else:
+      #   label_start = 0
       # format columns of text file into arrays
       gen_level = error_file_data[:,0] # airway bifurcation level
+      # do not show points from generation below a certain depth 
+      delete_rows = np.where(gen_level>args.cutoff_level)[0]
+      error_file_data = np.delete(error_file_data, delete_rows, axis=0)
+      # get all column data from text file
       gt_val.append(error_file_data[:,1]) # ground truth value for param
       reconstructed_val.append(error_file_data[:,2]) # reconstructed value for param
       abs_error = error_file_data[:,-2] # absolute error 
@@ -142,8 +155,8 @@ def bland_altman():
     plot_values = np.c_[np.hstack(reconstructed_val), np.hstack(gt_val)]
     # plot_values = np.c_[np.hstack(gt_val), np.hstack(reconstructed_val)]
 
-    correlation_line = np.linspace(np.min(plot_values), 
-                                    np.max(plot_values), 100)
+    # correlation_line = np.linspace(np.min(plot_values), 
+    #                                 np.max(plot_values), 100)
     bland_altman_plot(ax[i], plot_values[:,0], plot_values[:,1], 
                       c=colour_id, marker=marker_id)
     # sm.graphics.mean_diff_plot(plot_values[:,0], plot_values[:,1], ax=ax[i], 
@@ -151,7 +164,7 @@ def bland_altman():
     # sns.set(font_scale=0.1)
     ax[i].set_ylabel('Difference [{}]'.format(unit), fontsize=12)
     ax[i].set_xlabel('Means [{}]'.format(unit), fontsize=12)
-    ax[i].set_title("{}".format(param), fontsize=14)
+    ax[i].set_title("{}".format(titles[i]), fontsize=14)
     # if param == 'length':
     #   ax[i].set_xscale('log')
   import matplotlib.lines as mlines
@@ -160,7 +173,7 @@ def bland_altman():
             mlines.Line2D([], [], color='black', marker=marker_list[1], ls='None',
                            label='level 1 (main bronchi)'),
             mlines.Line2D([], [], color='black', marker=marker_list[2], ls='None',
-                           label='level 2')]
+                           label='level 2')][:args.cutoff_level+1]
   for j, sample in enumerate(sampleIDs):
     sampleMarker = [mlines.Line2D([], [], ls='None',
                                   color=jw_cmap[j], marker=marker_list[0], 
@@ -179,10 +192,11 @@ def bland_altman():
   # exit()
 
 def linear_regression():
-  global parameters, sampleIDs, units
+  global parameters, sampleIDs, units, titles
   errors = [None]*len(parameters)
   plt.close()
-  fig, ax = plt.subplots(1,3,figsize=(12,4))
+  # fig, ax = plt.subplots(1,3,figsize=(12,4))
+  fig, ax = plt.subplots(1,len(parameters), figsize=(12,4))
   for i, param in enumerate(parameters):
     gt_val = []
     reconstructed_val = []
@@ -191,6 +205,11 @@ def linear_regression():
     for j, sample in enumerate(sampleIDs):
       error_file_data = np.loadtxt(param_file_name.format(param, sample),
                                     skiprows=1)
+      gen_level = error_file_data[:,0] # airway bifurcation level
+      # do not show points from generation below a certain depth 
+      delete_rows = np.where(gen_level>args.cutoff_level)[0]
+      error_file_data = np.delete(error_file_data, delete_rows, axis=0)
+
       gt_val.append(error_file_data[:,1])
       reconstructed_val.append(error_file_data[:,2])
       abs_error = error_file_data[:,-2]
@@ -214,8 +233,8 @@ def linear_regression():
       ticks = ticks[::2]
     ax[i].set_xticks(ticks)
     ax[i].set_yticks(ticks)
-    ax[i].set_title(param, fontsize=12)
-    if param == 'length':
+    ax[i].set_title(titles[i], fontsize=12)
+    if param == 'length' and args.cutoff_level >= 2:
       ax[i].set_xscale('log')
       ax[i].set_yscale('log')
     ax[i].set_ylabel('reconstruction [{}]'.format(units[i]), fontsize=11)
@@ -230,9 +249,10 @@ def linear_regression():
   # exit()
 
 def error_gt():
-  global parameters, sampleIDs, units
+  global parameters, sampleIDs, units, titles
   errors = [None]*len(parameters)
-  fig, ax = plt.subplots(1,3,figsize=(12,4))
+  # fig, ax = plt.subplots(1,3,figsize=(12,4))
+  fig, ax = plt.subplots(1,len(parameters), figsize=(12,4))
   for i, param in enumerate(parameters):
     gt_val = []
     reconstructed_val = []
@@ -243,6 +263,8 @@ def error_gt():
       error_file_data = np.loadtxt(param_file_name.format(param, sample),
                                     skiprows=1)
       gen_level = error_file_data[:,0] # airway bifurcation level
+      delete_rows = np.where(gen_level>args.cutoff_level)[0]
+      error_file_data = np.delete(error_file_data, delete_rows, axis=0)
       gt_val.append(error_file_data[:,1])
       reconstructed_val.append(error_file_data[:,2])
       abs_error = error_file_data[:,-2]
@@ -266,8 +288,8 @@ def error_gt():
     #               c=colour_id)
     mscatter(plot_values[:,0], plot_values[:,1], ax=ax[i],
              c=colour_id, m=marker_id)
-    ax[i].set_title(param, fontsize=12)
-    if param == 'length':
+    ax[i].set_title(titles[i], fontsize=12)
+    if param == 'length' and args.cutoff_level >= 2:
       ax[i].set_xscale('log')
     # ax[i].set_ylabel('error [{}]'.format(units[i]), fontsize=11)
     ax[i].set_ylabel('error [{}]'.format('%'), fontsize=11)
@@ -281,7 +303,8 @@ def error_gt():
             mlines.Line2D([], [], color='black', marker=marker_list[1], ls='None',
                            label='level 1 (main bronchi)'),
             mlines.Line2D([], [], color='black', marker=marker_list[2], ls='None',
-                           label='level 2')]
+                           label='level 2')][:args.cutoff_level+1]
+
   for j, sample in enumerate(sampleIDs):
     sampleMarker = [mlines.Line2D([], [], ls='None',
                                   color=jw_cmap[j], marker=marker_list[0], 
