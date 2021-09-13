@@ -259,7 +259,9 @@ class RespiratoryReconstructSSAM:
 
     print('pose and scale off')
     airway_morphed = all_morphed[self.lmOrder["Airway"]]
-    # -check shape has not moved to be larger than XR or located outside XR
+    # check shape has not moved to be larger than XR or located outside XR
+    # TODO - will not work on non-DRR dataset i.e real XR as true imgCoords 
+    #        are unknown in three dimensions. Could use minMax of edge map?
     outside_bounds = np.any(
       (all_morphed[:, 0].max() > self.imgCoords[:, 0].max())
       | (all_morphed[:, 0].min() < self.imgCoords[:, 0].min())
@@ -283,7 +285,7 @@ class RespiratoryReconstructSSAM:
         )
         # can turn off anatomical shadow by setting coeff to 0
         # coeff/2 as we want to keep weighting same relative to other losses
-        if self.c_anatomical != 0:
+        if self.c_anatomical != 0.0:
           loss_anatomicalShadow += self.c_anatomical/2 * self.anatomicalShadow(
             self.img_local,
             self.imgCoords[:, axes],
@@ -743,7 +745,9 @@ class RespiratoryReconstructSSAM:
 
     tag = ""
     utils.plotLoss(
-      self.lossLog, stage=self.optimiseStage, wdir="images/reconstruction/"
+      self.lossLog, 
+      tag=self.optimiseStage+self.plot_tag, 
+      wdir="images/reconstruction/"
     )  # -plot loss
 
     optOut = dict.fromkeys(["pose", "scale", "b"])
@@ -793,7 +797,6 @@ class RespiratoryReconstructSSAM:
     dist = self.normalisedDistance(shape, xRay, scaler)
     fit_term_loss_i = abs(1 - dist)
     return np.sum(fit_term_loss_i)
-
 
   def priorTerm(self, shape, meanShape):
     """

@@ -417,15 +417,17 @@ def return_t_counter(t, point):
                                     (t[:,2] == p[2])) ][0,3] for p in point])
     return n
 
-def plotLoss(lossList, scale="linear", wdir="./", stage=""):
+def plotLoss(lossList, scale="linear", wdir="./", tag=""):
     plt.close()
     fig, ax = plt.subplots(1,1)
     ax.plot(np.arange(0,len(lossList)), lossList, lw=1)
-    ax.set_title(stage+" estimation loss function")
+    ax.set_title(tag+" loss function")
     ax.set_yscale("linear")
     ax.set_ylabel("Loss")
     ax.set_xlabel("Iteration")
-    plt.savefig(wdir+"loss"+stage+".pdf")
+    for pos in ['right', 'top']:
+      plt.gca().spines[pos].set_visible(False)
+    plt.savefig(wdir+"loss"+tag+".pdf")
     return None
 
 def saveHistogram(distances, fileLabel=""):
