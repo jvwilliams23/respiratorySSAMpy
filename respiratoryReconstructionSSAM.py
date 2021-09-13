@@ -300,10 +300,10 @@ class RespiratoryReconstructSSAM:
       density_t = np.stack(density_t, axis=1)
     else:
       density_t = self.getDensity(
-        all_morphed, self.img, self.imgCoords, self.imgCoords_axes
+        all_morphed, self.img, self.imgCoords, self.imgCoords_axes[0]
       ).reshape(-1, 1)
 
-      if self.c_anatomical != 0:
+      if self.c_anatomical != 0.0:
         loss_anatomicalShadow += self.c_anatomical * self.anatomicalShadow(
           self.img_local,
           self.imgCoords[:, self.imgCoords_axes[0]],
@@ -346,7 +346,7 @@ class RespiratoryReconstructSSAM:
     E = (
       (self.c_prior * prior) + (self.c_dense * densityFit) + (self.c_edge * fit)
     )
-    E += top_dist * 1.0
+    # E += top_dist * 1.0
     E += loss_anatomicalShadow
     print("top dist", top_dist)
 
@@ -598,8 +598,8 @@ class RespiratoryReconstructSSAM:
     # -target density (i.e. density at the nearest pixel)
     # density_t = density_t #self.getDensity(lm, img, imgCoords)
     abs_diff = abs(density_t - density_m)
-    return abs_diff.max()
-    # return np.mean(abs_diff)
+    # return abs_diff.max()
+    return np.mean(abs_diff)
 
   def morphShape(self, shape, transform, shapeParams, model):
     """
@@ -655,9 +655,11 @@ class RespiratoryReconstructSSAM:
     Imports to SSM and extracts adjusted shape.
     """
     # removeTrans = shape - transform
+    # removeMean = shape.mean()
     removeMean = shape.mean(axis=0)
     shapeCentre = shape - removeMean
-    scaler = shapeCentre.std(axis=0)
+    scaler = shapeCentre.std()
+    # scaler = shapeCentre.std(axis=0)
     shapeSc = (
       shapeCentre / scaler
     )  # StandardScaler().fit_transform(shapeCentre)
@@ -761,14 +763,14 @@ class RespiratoryReconstructSSAM:
     n_proj = self.number_of_imgs
     for img_index, axes in zip(range(0, n_proj), self.imgCoords_axes):
       if n_proj == 1:
-        projLM_ID_i = self.projLM_ID
-        xRay_i = xRay.copy()
+        projLM_ID_i = self.projLM_ID.copy()
+        xRay_i = xRay[0].copy()
       else:
         projLM_ID_i = self.projLM_ID_multipleproj[img_index]
         xRay_i = xRay[img_index]
       for k, key in enumerate(self.lobes):
-        # skip certain lobes or sub-shapes for different images 
-        # as they may be non-visible 
+        # skip certain lobes or sub-shapes for different images
+        # as they may be non-visible
         if key not in self.shapes_to_skip_fitting[img_index]:
           shape = shapeDict[key][projLM_ID_i[key]][:, axes]
           num_points += len(shape)
