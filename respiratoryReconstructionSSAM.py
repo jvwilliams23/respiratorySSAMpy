@@ -70,6 +70,7 @@ class RespiratoryReconstructSSAM:
     img_names=["frontal"],
     shapes_to_skip_fitting=["None"],
     plot_freq=250,
+    plot_tag="",
   ):  # 7):
 
     # tunable hyper-parameters
@@ -84,6 +85,8 @@ class RespiratoryReconstructSSAM:
     self.quiet = quiet
     self.img_names = img_names
     self.shapes_to_skip_fitting = shapes_to_skip_fitting
+    self.plot_freq = plot_freq  # frequency to show debug plots
+    self.plot_tag = plot_tag # file name for debug plots
 
     self.lobes = ["RUL", "RML", "RLL", "LUL", "LLL"]
 
@@ -101,7 +104,7 @@ class RespiratoryReconstructSSAM:
     self.density = density  # -landmark densities
 
     # number of images used for reconstruction (assumes img shape = 500 x 500)
-    self.number_of_imgs = max(np.sum(img.shape)-1000,1)
+    self.number_of_imgs = max(np.sum(img.shape) - 1000, 1)
 
     """
     # self.img = ssam.sam.normaliseTestImageDensity(img)
@@ -113,12 +116,12 @@ class RespiratoryReconstructSSAM:
     """
     # format x-ray for image enhancement
     self.img = copy(img)  # -XR image array
-    img = self.rescaleProjection(img)
-    img *= 0.999  # avoid floating point error in scalar causing img > 1
+    img_scaled = self.rescaleProjection(img)
+    img_scaled *= 0.999  # avoid floating point error in scalar causing img > 1
     # img_filt = utils.bilateralfilter(img, 10)
     # if img_filt.max()>1:
     #   img_filt = img_filt/img_filt.max()
-    img_local = utils.localNormalisation(img, 20)
+    img_local = utils.localNormalisation(img_scaled, 20)
     img_local = self.rescaleProjection(img_local)
     self.img_local = np.round(img_local, 4)
     print(self.img_local.min(), self.img_local.max())
@@ -148,31 +151,39 @@ class RespiratoryReconstructSSAM:
 
       for k in model.keys():
         print(k)
-        # get shape for reshaping 
+        # get shape for reshaping
         if self.density.ndim == 3:
           number_of_features = len(shape[k][0]) + len(self.density[0][0])
         else:
-          number_of_features = len(shape[k][0]) + 1 # one value for density
+          number_of_features = len(shape[k][0]) + 1  # one value for density
         # -shape model components only
-        self.model_s[k] = self.filterModelShapeOnly(self.model[k][:modeNum], number_of_features)
+        self.model_s[k] = self.filterModelShapeOnly(
+          self.model[k][:modeNum], number_of_features
+        )
         # -gray-value model components only
-        self.model_g[k] = self.filterModelDensityOnly(self.model[k][:modeNum], number_of_features)
+        self.model_g[k] = self.filterModelDensityOnly(
+          self.model[k][:modeNum], number_of_features
+        )
 
       self.meanScaled = self.stackShapeAndDensity(
         self.scaleShape(shape["ALL"]), self.density.mean(axis=0)
       )
     else:
-      # get shape for reshaping 
+      # get shape for reshaping
       if self.density.ndim == 3:
         number_of_features = len(shape[0]) + len(self.density[0])
       else:
-        number_of_features = len(shape[0]) + 1 # one value for density
+        number_of_features = len(shape[0]) + 1  # one value for density
       # -parameters
       self.b = np.zeros(modeNum)
       # -shape model components only
-      self.model_s = self.filterModelShapeOnly(self.model[:modeNum], number_of_features)
+      self.model_s = self.filterModelShapeOnly(
+        self.model[:modeNum], number_of_features
+      )
       # -gray-value model components only
-      self.model_g = self.filterModelDensityOnly(self.model[:modeNum], number_of_features)
+      self.model_g = self.filterModelDensityOnly(
+        self.model[:modeNum], number_of_features
+      )
       self.meanScaled = self.stackShapeAndDensity(
         self.scaleShape(shape), self.density.mean(axis=0)
       )
@@ -180,7 +191,7 @@ class RespiratoryReconstructSSAM:
   def rescaleProjection(self, img):
     """
     Set pixel value to [0:1] for a single or multiple projections.
-    
+
     Parameter
     ---------
     image or series of images (np.ndarray, (500, 500), or (N, 500,500))
@@ -514,7 +525,7 @@ class RespiratoryReconstructSSAM:
     if len(energy) == 0:
       return 0
     else:
-      print("\tanatomicalShadow", energy.sum(), energy.mean())
+      if not self.quiet: print("\tanatomicalShadow", energy.sum(), energy.mean())
       return (energy).mean()
 
   def scaleShape(self, shape):
@@ -553,8 +564,7 @@ class RespiratoryReconstructSSAM:
     model_as_columns = model.reshape(model.shape[0], -1, number_of_features)
     number_of_appearances_cols = number_of_features - 3
     # slice to remove columns representing appearance/density
-    model_noApp = model_as_columns[:,:,:-number_of_appearances_cols]
-    print("model_noApp.shape", model_noApp.shape)
+    model_noApp = model_as_columns[:, :, :-number_of_appearances_cols]
     # -reshape to 2D array
     return model_noApp.reshape(model.shape[0], -1)
 
@@ -569,9 +579,8 @@ class RespiratoryReconstructSSAM:
     model_as_columns = model.reshape(model.shape[0], -1, number_of_features)
     number_of_appearances_cols = number_of_features - 3
     # slice to remove columns representing appearance/density
-    model_no_shape = model_as_columns[:,:,-number_of_appearances_cols:]
+    model_no_shape = model_as_columns[:, :, -number_of_appearances_cols:]
     # -reshape to 2D array
-    print("model_no_shape.shape", model_no_shape.shape)
     return model_no_shape.reshape(model.shape[0], -1)
 
   def normaliseDist(self, dist):
