@@ -357,7 +357,13 @@ def getShapeParameters(
 
 
 def newProjLMs(
-  faces, meanNorms_face, surfCoords_mmOrig, surfCoords_mm, landmarks, plane=1
+  faces,
+  meanNorms_face,
+  surfCoords_mmOrig,
+  surfCoords_mm,
+  surfCoords_centred,
+  landmarks,
+  plane=1,
 ):
   """
   Get new landmarks that have a normal partially facing towards and away
@@ -369,6 +375,7 @@ def newProjLMs(
   meanNorms_face : normal vectors for each point on face
   surfCoords_mmOrig : vertex coordinates in CT space
   surfCoords_mm : vertex coordinates in landmark space
+  surfCoords_centred : vertex coordinates centred on the origin
   plane : projected plane to find silhouette LMs in
 
   """
@@ -545,14 +552,15 @@ if __name__ == "__main__":
   spacing_xr = None
 
   print("\tReading data")
-  with open("config.json") as f:
+  with open("config_3proj.json") as f:
     config = hjson.load(f)
   # read DRR data
   originDirs = filesFromRegex(config["luna16paths"]["origins"])
   spacingDirs = filesFromRegex(config["luna16paths"]["spacing"])
   imDirs = filesFromRegex(config["luna16paths"]["drrs"])
   imDirs_left = filesFromRegex(config["luna16paths"]["drrs_left"])
-  imDirs_right = filesFromRegex(config["luna16paths"]["drrs_right"])
+  # imDirs_right = filesFromRegex(config["luna16paths"]["drrs_right"])
+  imDirs_45 = filesFromRegex(config["luna16paths"]["drrs_-45"])
   patientIDs = matchesFromRegex(config["luna16paths"]["origins"])
 
   # read landmark data
@@ -567,8 +575,15 @@ if __name__ == "__main__":
     == len(imDirs)
     == len(originDirs)
     == len(imDirs_left)
-    == len(imDirs_right)
-  ), "Error reading image data"
+    == len(imDirs_45)
+  ), (
+    "Error reading image data. "
+    f"Num spacing dirs = {len(spacingDirs)}. "
+    f"Num imDirs dirs = {len(imDirs)}. "
+    f"Num originDirs dirs = {len(originDirs)}. "
+    f"Num imDirs_left dirs = {len(imDirs_left)}. "
+    f"Num imDirs_45 dirs = {len(imDirs_45)}. "
+  )
 
   if (
     len(imDirs) == 0
@@ -602,7 +617,7 @@ if __name__ == "__main__":
     spacingDirs.pop(dId)
     imDirs.pop(dId)
     imDirs_left.pop(dId)
-    imDirs_right.pop(dId)
+    imDirs_45.pop(dId)
     patientIDs.pop(dId)
   missing = []
   missingID = []
@@ -683,9 +698,19 @@ if __name__ == "__main__":
     2,
     0,
   )
+  drrArr_45 = np.rollaxis(
+    # np.dstack([utils.loadXR(o)[:-2,:-2][::imgSpaceCoeff,::imgSpaceCoeff]
+    np.dstack(
+      [utils.loadXR(o)[::imgSpaceCoeff, ::imgSpaceCoeff] for o in imDirs_45]
+    ),
+    2,
+    0,
+  )
   if config["training"]["num_imgs"] == 2:
     # join so array is shape Npatients, Nimages, Npixels_x, Npixels_y
     drrArr = np.stack((drrArr, drrArr_left), axis=1)
+  elif config["training"]["num_imgs"] == 3:
+    drrArr = np.stack((drrArr, drrArr_left, drrArr_45), axis=1)
 
   # offset centered coordinates to same reference frame as CT data
   carinaArr = nodalCoordsOrig[:, 1]
@@ -748,7 +773,7 @@ if __name__ == "__main__":
     testLM.append(copy(landmarks[t]))
     lmProj_test.append(copy(landmarks[t]))
 
-    """
+    """ """
     # remove test data from train data
     patientIDs.pop(t)
     origin = np.delete(origin, t, axis=0)
@@ -756,7 +781,7 @@ if __name__ == "__main__":
     drrArr = np.delete(drrArr, t, axis=0)
     landmarks = np.delete(landmarks, t, axis=0)
     lmProj = np.delete(lmProj, t, axis=0)
-    """
+    """ """
 
   if randomise_testing:
     print("test IDs are", testID)
@@ -768,7 +793,13 @@ if __name__ == "__main__":
 
   # create appearance model instance and load data
   ssam = RespiratorySSAM(
-    landmarks, lmProj, drrArr, origin, spacing, train_size=landmarks.shape[0]
+    landmarks,
+    lmProj,
+    drrArr,
+    origin,
+    spacing,
+    train_size=landmarks.shape[0],
+    rotation=config["training"]["rotation"],
   )
   if testIm[0].ndim == 3:
     # if multiple images for reconstruction, get density for each one
@@ -813,6 +844,9 @@ if __name__ == "__main__":
   meanNorms_face = dict.fromkeys(
     shapes
   )  # normals for each face (?) of mean mesh
+  meanNorms_face_rot45 = dict.fromkeys(shapes)
+  # surfCoords_mmOrig_rot45 = dict.fromkeys(shapes)
+  # surfCoords_mm_rot45 = dict.fromkeys(shapes)
   surfToLMorder = dict.fromkeys(shapes)  # mapping between surface nodes and LMs
   newMean = args.newMean
   # create mesh for population average from a morphing algorithm
@@ -902,15 +936,23 @@ if __name__ == "__main__":
       mesh = mean_mesh[key].clone().decimate(fraction=0.1).clean()
     if not args.quiet:
       print("decimated num cells", len(mesh.faces()))
+    mesh_45 = mesh.clone().rotateZ(45)
+    # vp = v.Plotter()
+    # vp += mesh_45.alpha(0.8)
+    # vp += mesh.alpha(0.2)
+    # vp.show()
+    # exit()
     # load mesh data and create silhouette
     surfCoords = mesh.points()
     meanNorms_face[key] = mesh.normals(cells=True)
+    meanNorms_face_rot45[key] = mesh_45.normals(cells=True)
     faces[key] = np.array(mesh.faces())
 
     # offset to ensure shapes are aligned to carina
     surfCoords_centred[key] = copy(surfCoords)
     surfCoords_mm[key] = surfCoords + carinaArr.mean(axis=0)
     surfCoords_mmOrig[key] = copy(surfCoords_mm[key])
+    # surfCoords_mm_rot45[key]
     surfToLMorder[key] = []
     for point in meanArr[lmOrder[key]]:
       surfToLMorder[key].append(
@@ -934,7 +976,6 @@ if __name__ == "__main__":
     # center image coords, so in the same coord system as edges
     imgCoords -= np.mean(imgCoords, axis=0)
 
-
     # edge points in units of pixels from edge map
     edgePoints = [None] * len(config["test-set"]["outlines"])
     for f, file in enumerate(config["test-set"]["outlines"]):
@@ -946,15 +987,19 @@ if __name__ == "__main__":
     if len(edgePoints) == 1:
       edgePoints = edgePoints[f]
 
-    # debug checks to show initial alignment of image with edge map, 
+    # debug checks to show initial alignment of image with edge map,
     # and mean shape with edge map
     if debug:
       if config["training"]["num_imgs"] == 1:
         # for plotting image in same ref frame as the edges
         axes = config["training"]["img_axes"][0]
-        extent = [imgCoords[:,axes[0]].min(), imgCoords[:,axes[0]].max(),
-                  imgCoords[:,axes[1]].min(), imgCoords[:,axes[1]].max()]
-        
+        extent = [
+          imgCoords[:, axes[0]].min(),
+          imgCoords[:, axes[0]].max(),
+          imgCoords[:, axes[1]].min(),
+          imgCoords[:, axes[1]].max(),
+        ]
+
         fig, ax = plt.subplots(1, 2)
         ax[0].imshow(img, cmap="gray", extent=extent)
         ax[0].scatter(edgePoints[:, 0], edgePoints[:, 1], s=2)
@@ -964,21 +1009,34 @@ if __name__ == "__main__":
       else:
         for i in range(0, config["training"]["num_imgs"]):
           img_ax_i = config["training"]["img_axes"][i]
-          extent = [imgCoords[:,img_ax_i[0]].min(), 
-                    imgCoords[:,img_ax_i[0]].max(),
-                    imgCoords[:,img_ax_i[1]].min(), 
-                    imgCoords[:,img_ax_i[1]].max()]
-
+          extent = [
+            imgCoords[:, img_ax_i[0]].min(),
+            imgCoords[:, img_ax_i[0]].max(),
+            imgCoords[:, img_ax_i[1]].min(),
+            imgCoords[:, img_ax_i[1]].max(),
+          ]
+          plt.close()
           fig, ax = plt.subplots(1, 2)
           ax[0].imshow(img[i], cmap="gray", extent=extent)
-          ax[0].scatter(edgePoints[i][:, 0], edgePoints[i][:, 1], s=2)
-          ax[1].scatter(edgePoints[i][:, 0], edgePoints[i][:, 1], s=2)
-          ax[1].scatter(
-            meanArr[:, config["training"]["img_axes"][i][0]],
-            meanArr[:, config["training"]["img_axes"][i][1]],
-            s=1,
-            c="black",
-          )
+          if config["training"]["rotation"][i] == 0:
+            ax[0].scatter(edgePoints[i][:, 0], edgePoints[i][:, 1], s=2)
+            ax[1].scatter(edgePoints[i][:, 0], edgePoints[i][:, 1], s=2)
+            ax[1].scatter(
+              meanArr[:, config["training"]["img_axes"][i][0]],
+              meanArr[:, config["training"]["img_axes"][i][1]],
+              s=1,
+              c="black",
+            )
+          else:
+            ax[0].scatter(
+              utils.rotate_coords_about_z(meanArr, 45)[
+                :, config["training"]["img_axes"][i][0]
+              ],
+              meanArr[:, config["training"]["img_axes"][i][1]],
+              s=1,
+              c="yellow",
+              alpha=0.2,
+            )
           plt.show()
 
     # declare posterior shape model class
@@ -1007,7 +1065,7 @@ if __name__ == "__main__":
       img_names=config["training"]["img_names"],
       shapes_to_skip_fitting=config["training"]["shapes_to_skip_fit"],
       plot_freq=args.plot_freq,
-      plot_tag=f"case{tID}"
+      plot_tag=f"case{tID}",
     )
     assam.spacing_xr = spacing_xr
     # import variables to class
@@ -1026,7 +1084,12 @@ if __name__ == "__main__":
     # True if given new mesh to get projection landmarks.
     if len(glob(projLM_file.format("*"))) == 0 or args.newProjLM:
       projLM, projLM_ID = newProjLMs(
-        faces, meanNorms_face, surfCoords_mmOrig, surfCoords_mm, inputCoords
+        faces,
+        meanNorms_face,
+        surfCoords_mmOrig,
+        surfCoords_mm,
+        surfCoords_centred,
+        inputCoords,
       )
       # write new projection coords to text file
       for key in projLM.keys():
@@ -1044,20 +1107,37 @@ if __name__ == "__main__":
         )
       assam.projLM, assam.projLM_ID = projLM.copy(), projLM_ID.copy()
 
-      if config["training"]["num_imgs"] == 2:
-        # get projection IDs for alternative images (i.e. additional lateral views)
-        _, projLM_ID_multipleproj = newProjLMs(
-          faces,
-          meanNorms_face,
-          surfCoords_mmOrig,
-          surfCoords_mm,
-          inputCoords,
-          plane=0,
-        )
-        assam.projLM_ID_multipleproj = [
-          assam.projLM_ID.copy(),
-          projLM_ID_multipleproj.copy(),
-        ]
+      if config["training"]["num_imgs"] > 1:
+        projLM_ID_multipleproj = [None] * config["training"]["num_imgs"]
+        projLM_ID_multipleproj[0] = copy(projLM_ID)
+        for proj_i in range(1, config["training"]["num_imgs"]):
+          if config["training"]["rotation"][proj_i] == 0:
+            # find which plane is projected
+            plane = np.setdiff1d(
+              [0, 1, 2], config["training"]["img_axes"][proj_i]
+            )[0]
+            _, projLM_ID_multipleproj[proj_i] = newProjLMs(
+              faces,
+              meanNorms_face,
+              surfCoords_mmOrig,
+              surfCoords_mm,
+              surfCoords_centred,
+              inputCoords,
+              plane=0,
+            )
+          elif config["training"]["rotation"][proj_i] == 45:
+            _, projLM_ID_multipleproj[proj_i] = newProjLMs(
+              faces,
+              meanNorms_face_rot45,
+              surfCoords_mmOrig,
+              surfCoords_mm,
+              surfCoords_centred,
+              inputCoords,
+              plane=0,
+            )
+          # get projection IDs for alternative images (i.e. additional lateral views)
+        assam.projLM_ID_multipleproj = copy(projLM_ID_multipleproj)
+        # save projLM IDs for loading on future runs
         for proj_ind, proj in enumerate(assam.projLM_ID_multipleproj):
           for key in proj.keys():
             np.savetxt(
@@ -1105,9 +1185,7 @@ if __name__ == "__main__":
             )
 
     print(f"time taken to get projected points {round(time() - t1)} s")
-    print(
-      f"finished getting projected landmarks. Time taken = {time() - t1} s"
-    )
+    print(f"finished getting projected landmarks. Time taken = {time() - t1} s")
 
     assam.fissureLM_ID = 0
     t1 = time()
@@ -1155,6 +1233,7 @@ if __name__ == "__main__":
             )
           plt.show()
 
+    exit()
     # initialise parameters to be optimised - including initial values + bounds
     optTrans_new = dict.fromkeys(["pose", "scale"])
     optTrans_new["pose"] = [0, 0]
@@ -1263,11 +1342,15 @@ if __name__ == "__main__":
     #   plt.savefig("images/reconstruction/{}.png".format(tag), dpi=200)
     # else:
     for i, axes in enumerate(config["training"]["img_axes"]):
-      extent = [imgCoords[:,axes[0]].min(), imgCoords[:,axes[0]].max(),
-                imgCoords[:,axes[1]].min(), imgCoords[:,axes[1]].max()]
+      extent = [
+        imgCoords[:, axes[0]].min(),
+        imgCoords[:, axes[0]].max(),
+        imgCoords[:, axes[1]].min(),
+        imgCoords[:, axes[1]].max(),
+      ]
       plt.close()
       plt.imshow(img.reshape(-1, 500, 500)[i], cmap="gray", extent=extent)
-      plt.scatter(outShape[:, axes[0]], outShape[:, axes[1]], s=2, c="black")
+      plt.scatter(outShape[:, axes[0]], outShape[:, axes[1]], s=2, c="yellow")
       plt.savefig(f"images/reconstruction/{tag}-view{i}.png", dpi=200)
 
     # shape parameters for ground truth
@@ -1376,6 +1459,16 @@ plt.scatter(projTest[:,0], projTest[:,2], s=2, c='black')
 plt.show()
 """
 """
+
+for i, (pID, lm, d) in enumerate(zip(patientIDs, landmarks, density)):
+  plt.close()
+  plt.scatter(lm[:,0], lm[:,2], 
+              c=d[:,0], s=5, vmin=-2, vmax=2, cmap='gray')
+  plt.title(pID)
+  plt.axis('off')
+  plt.savefig('images/SAM/alignmentCheck/frontal-{}.png'.format(pID))
+
+
 
 airwayProj_pts = lmOrder['Airway'][np.isin(lmOrder['Airway'], assam.projLM_ID['Airway'])]
 ourShape = (outShape - outShape[lmOrder['SKELETON'][1]])[airwayProj_pts]
