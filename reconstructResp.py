@@ -391,6 +391,13 @@ def newProjLMs(
       projLM_ID,
     )
 
+
+  if args.debug:
+    key = "Airway"
+    x = surfCoords_centred[key][projLM_ID[key]]
+    plt.scatter(x[:, 0], x[:, 2], c="black", s=1)
+    plt.scatter(landmarks["Airway"][:,0], landmarks["Airway"][:, 2], c="blue", s=10, alpha=0.3)
+    plt.show()
   # reorder projected surface points to same order as landmarks
   # print("number proj airway pts", len(assam.projLM_ID["Airway"]))
   for key in shapes:
@@ -823,8 +830,7 @@ if __name__ == "__main__":
   # keep vertical alignment term for later use
   lmAlign = meanArr[:, 2].mean()  # landmarks[:,2].mean()
   offset_to_centre = meanArr.mean(axis=0)
-  meanArr -= offset_to_centre
-  # meanArr[:, 2] -= lmAlign
+  meanArr[:, 2] -= lmAlign
 
   modelDict = dict.fromkeys(shapes)
   inputCoords = dict.fromkeys(shapes)
