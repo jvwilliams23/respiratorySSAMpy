@@ -59,8 +59,8 @@ def getInputs():
   )
   parser.add_argument(
     "--load_data_only",
-    default="False",  #'3948',
-    type=strtobool,  # , required=True,
+    default="False",
+    type=strtobool,
     help="only load input data. Do not perform optimisation.",
   )
   parser.add_argument(
@@ -218,6 +218,14 @@ def getInputs():
     type=strtobool,
     help="Turn off print checks",
   )
+  parser.add_argument(
+    "-b",
+    "--bayesian_opt",
+    default=str(False),
+    type=strtobool,
+    help="Perform bayesian optimisation and read coeffs from file",
+  )
+
 
   args = parser.parse_args()
   return args
@@ -506,11 +514,12 @@ def matchesFromRegex(path):
 
 
 if __name__ == "__main__":
+  args = getInputs()
   date_today = str(date.today())
-  print(__doc__)
+  if not args.quiet:
+    print(__doc__)
   startTime = time()
 
-  args = getInputs()
   landmarkDir = args.inp
   case = args.case
   tag = args.out
@@ -521,9 +530,18 @@ if __name__ == "__main__":
   surfDir = args.meshdir
   numEpochs = args.epochs
   xrayEdgeFile = args.xray
-  c_edge = args.c_edge
-  c_dense = args.c_dense
-  c_prior = args.c_prior
+  if args.bayesian_opt:
+    bayes_pts = np.loadtxt("points_to_sample.txt")
+    c_dense = bayes_pts[0]
+    c_edge = bayes_pts[1]
+    c_prior = bayes_pts[2]
+  else:
+    c_dense = args.c_dense
+    c_edge = args.c_edge
+    c_prior = args.c_prior
+  print(f"c_dense is {c_dense}")
+  print(f"c_edge is {c_edge}")
+  print(f"c_prior is {c_prior}")
   c_anatomical = args.c_anatomical
   c_grad = args.c_grad
   kernel_radius = args.kernel_radius
@@ -566,7 +584,7 @@ if __name__ == "__main__":
   spacingDirs = filesFromRegex(config["luna16paths"]["spacing"])
   imDirs = filesFromRegex(config["luna16paths"]["drrs"])
   imDirs_left = filesFromRegex(config["luna16paths"]["drrs_left"])
-  # imDirs_right = filesFromRegex(config["luna16paths"]["drrs_right"])
+  imDirs_right = filesFromRegex(config["luna16paths"]["drrs_right"])
   imDirs_45 = filesFromRegex(config["luna16paths"]["drrs_-45"])
   patientIDs = matchesFromRegex(config["luna16paths"]["origins"])
 
@@ -582,6 +600,7 @@ if __name__ == "__main__":
     == len(imDirs)
     == len(originDirs)
     == len(imDirs_left)
+    == len(imDirs_right)
     == len(imDirs_45)
   ), (
     "Error reading image data. "
@@ -589,6 +608,7 @@ if __name__ == "__main__":
     f"Num imDirs dirs = {len(imDirs)}. "
     f"Num originDirs dirs = {len(originDirs)}. "
     f"Num imDirs_left dirs = {len(imDirs_left)}. "
+    f"Num imDirs_right dirs = {len(imDirs_right)}. "
     f"Num imDirs_45 dirs = {len(imDirs_45)}. "
   )
 
@@ -624,6 +644,7 @@ if __name__ == "__main__":
     spacingDirs.pop(dId)
     imDirs.pop(dId)
     imDirs_left.pop(dId)
+    imDirs_right.pop(dId)
     imDirs_45.pop(dId)
     patientIDs.pop(dId)
   missing = []
@@ -697,27 +718,39 @@ if __name__ == "__main__":
     2,
     0,
   )
-  drrArr_left = np.rollaxis(
-    # np.dstack([utils.loadXR(o)[:-2,:-2][::imgSpaceCoeff,::imgSpaceCoeff]
-    np.dstack(
-      [utils.loadXR(o)[::imgSpaceCoeff, ::imgSpaceCoeff] for o in imDirs_left]
-    ),
-    2,
-    0,
-  )
-  drrArr_45 = np.rollaxis(
-    # np.dstack([utils.loadXR(o)[:-2,:-2][::imgSpaceCoeff,::imgSpaceCoeff]
-    np.dstack(
-      [utils.loadXR(o)[::imgSpaceCoeff, ::imgSpaceCoeff] for o in imDirs_45]
-    ),
-    2,
-    0,
-  )
+  if "drrs_left" in config["training"]["img_keys"]:
+    drrArr_left = np.rollaxis(
+      # np.dstack([utils.loadXR(o)[:-2,:-2][::imgSpaceCoeff,::imgSpaceCoeff]
+      np.dstack(
+        [utils.loadXR(o)[::imgSpaceCoeff, ::imgSpaceCoeff] for o in imDirs_left]
+      ),
+      2,
+      0,
+    )
+  if "drrs_right" in config["training"]["img_keys"]:
+    drrArr_right = np.rollaxis(
+      # np.dstack([utils.loadXR(o)[:-2,:-2][::imgSpaceCoeff,::imgSpaceCoeff]
+      np.dstack(
+        [utils.loadXR(o)[::imgSpaceCoeff, ::imgSpaceCoeff] for o in imDirs_right]
+      ),
+      2,
+      0,
+    )
+  if "drrs_-45" in config["training"]["img_keys"]:
+    drrArr_45 = np.rollaxis(
+      # np.dstack([utils.loadXR(o)[:-2,:-2][::imgSpaceCoeff,::imgSpaceCoeff]
+      np.dstack(
+        [utils.loadXR(o)[::imgSpaceCoeff, ::imgSpaceCoeff] for o in imDirs_45]
+      ),
+      2,
+      0,
+    )
+
   if config["training"]["num_imgs"] == 2:
     # join so array is shape Npatients, Nimages, Npixels_x, Npixels_y
     drrArr = np.stack((drrArr, drrArr_left), axis=1)
   elif config["training"]["num_imgs"] == 3:
-    drrArr = np.stack((drrArr, drrArr_left, drrArr_45), axis=1)
+    drrArr = np.stack((drrArr, drrArr_left, drrArr_right), axis=1)
 
   # offset centered coordinates to same reference frame as CT data
   carinaArr = nodalCoordsOrig[:, 1]
@@ -770,7 +803,7 @@ if __name__ == "__main__":
   testSet.sort()
   lmProjDef = lmProj.copy()
   landmarksDef = landmarks.copy()
-  lmProj_test = []
+  ground_truth_landmarks = []
   for t in testSet[::-1]:
     # store test data in different list
     testID.append(patientIDs[t])
@@ -778,7 +811,7 @@ if __name__ == "__main__":
     testSpacing.append(spacing[t])
     testIm.append(drrArr[t])
     testLM.append(copy(landmarks[t]))
-    lmProj_test.append(copy(landmarks[t]))
+    ground_truth_landmarks.append(copy(landmarks[t]))
 
     """ """
     # remove test data from train data
@@ -824,7 +857,7 @@ if __name__ == "__main__":
   numModes = np.where(
     np.cumsum(ssam.pca_sg.explained_variance_ratio_) > describedVariance
   )[0][0]
-  print("modes used is", numModes)
+  if not args.quiet: print("modes used is", numModes)
 
   # center the lobes vertically
   # keep vertical alignment term for later use
@@ -931,7 +964,7 @@ if __name__ == "__main__":
   # reorder unstructured stl file to be coherent w/ model and landmarks
   # extract mesh data (coords, normals and faces)
   for key in shapes:
-    print(f"loading {key} mesh")
+    if not args.quiet: print(f"loading {key} mesh")
     if not args.quiet:
       print("original num cells", len(mean_mesh[key].faces()))
     if key == "Airway":
@@ -943,6 +976,7 @@ if __name__ == "__main__":
     if not args.quiet:
       print("decimated num cells", len(mesh.faces()))
     mesh_45 = mesh.clone().rotateZ(45)
+    meanNorms_face_rot45[key] = mesh_45.normals(cells=True)
     # vp = v.Plotter()
     # vp += mesh_45.alpha(0.8)
     # vp += mesh.alpha(0.2)
@@ -951,7 +985,6 @@ if __name__ == "__main__":
     # load mesh data and create silhouette
     surfCoords = mesh.points()
     meanNorms_face[key] = mesh.normals(cells=True)
-    meanNorms_face_rot45[key] = mesh_45.normals(cells=True)
     faces[key] = np.array(mesh.faces())
 
     # offset to ensure shapes are aligned to carina
@@ -968,30 +1001,38 @@ if __name__ == "__main__":
 
   tagBase = copy(tag)
   save_initial_coords = copy(inputCoords)
-  for t, (tID, tLM, tImg, tOrig, tSpace) in enumerate(
-    zip(testID, testLM, testIm, testOrigin, testSpacing)
-  ):
+  for t, (
+    target_id,
+    target_lm,
+    target_img,
+    target_origin,
+    target_spacing,
+  ) in enumerate(zip(testID, testLM, testIm, testOrigin, testSpacing)):
 
-    tag = tagBase + "_case" + tID
+    tag = tagBase + "_case" + target_id
     # load image directly from training data
-    img = tImg.copy()
+    img = target_img.copy()
 
     # index 0 as output is stacked
-    imgCoords = ssam.sam.drrArrToRealWorld(img, np.zeros(3), tSpace)[0]
-    spacing_xr = tSpace.copy()
+    imgCoords = ssam.sam.drrArrToRealWorld(img, np.zeros(3), target_spacing)[0]
+    spacing_xr = target_spacing.copy()
     # center image coords, so in the same coord system as edges
     imgCoords -= np.mean(imgCoords, axis=0)
 
     # edge points in units of pixels from edge map
     edgePoints = [None] * len(config["test-set"]["outlines"])
     for f, file in enumerate(config["test-set"]["outlines"]):
-      file_re = config["test-set"]["outlines"][f].format(tID, tID)
+      file_re = config["test-set"]["outlines"][f].format(target_id, target_id)
       print(file_re)
       edgePoints[f] = np.loadtxt(file_re, delimiter=",")
       edgePoints[f] = np.unique(edgePoints[f], axis=0)
     # if only 1 x-ray given, change shape from list of 2D arrays to one 2D array
     if len(edgePoints) == 1:
       edgePoints = edgePoints[f]
+    edgePoints_contrast = np.loadtxt(
+      config["test-set"]["contrast-outline"][0].format(target_id, target_id), 
+      delimiter=","
+    )
 
     # debug checks to show initial alignment of image with edge map,
     # and mean shape with edge map
@@ -1034,45 +1075,80 @@ if __name__ == "__main__":
               c="black",
             )
           else:
+            coords_rot = utils.rotate_coords_about_z(meanArr, config["training"]["rotation"][i])
+            
+            ax[1].scatter(edgePoints[i][:, 0], edgePoints[i][:, 1], s=2)
             ax[0].scatter(
-              utils.rotate_coords_about_z(meanArr, 45)[
-                :, config["training"]["img_axes"][i][0]
-              ],
-              meanArr[:, config["training"]["img_axes"][i][1]],
+              coords_rot[:, config["training"]["img_axes"][i][0]],
+              coords_rot[:, config["training"]["img_axes"][i][1]],
               s=1,
               c="yellow",
               alpha=0.2,
             )
+            ax[1].scatter(edgePoints[i][:, 0], edgePoints[i][:, 1], s=2)
           plt.show()
 
+    # exit()
     # declare posterior shape model class
-    assam = RespiratoryReconstructSSAM(
-      shape=inputCoords,
-      xRay=edgePoints,
-      lmOrder=lmOrder,
-      normals=None,
-      transform=carinaArr[t] * 0.0,
-      img=img,
-      # imgSpacing=spacing_xr,
-      imgCoords=imgCoords,
-      imgCoords_all=ssam.sam.imgCoords_all,
-      imgCoords_axes=config["training"]["img_axes"],
-      density=density,
-      model=modelDict,
-      modeNum=numModes,
-      c_edge=c_edge,
-      c_prior=c_prior,
-      c_dense=c_dense,
-      c_grad=c_grad,
-      c_anatomical=c_anatomical,
-      kernel_distance=kernel_distance,
-      kernel_radius=kernel_radius,
-      quiet=args.quiet,
-      img_names=config["training"]["img_names"],
-      shapes_to_skip_fitting=config["training"]["shapes_to_skip_fit"],
-      plot_freq=args.plot_freq,
-      plot_tag=f"case{tID}",
-    )
+    if strtobool(config["test-set"]["contrast"][0]) == True:
+      assam = RespiratoryReconstructSSAM(
+        shape=inputCoords,
+        xRay=edgePoints,
+        lmOrder=lmOrder,
+        normals=None,
+        transform=carinaArr[t] * 0.0,
+        img=copy(img),
+        # imgSpacing=spacing_xr,
+        imgCoords=imgCoords,
+        imgCoords_all=ssam.sam.imgCoords_all,
+        imgCoords_axes=config["training"]["img_axes"],
+        density=density,
+        model=modelDict,
+        modeNum=numModes,
+        c_edge=c_edge,
+        c_prior=c_prior,
+        c_dense=c_dense,
+        c_grad=c_grad,
+        c_anatomical=c_anatomical,
+        kernel_distance=kernel_distance,
+        kernel_radius=kernel_radius,
+        quiet=args.quiet,
+        img_names=config["training"]["img_names"],
+        shapes_to_skip_fitting=config["training"]["shapes_to_skip_fit"],
+        plot_freq=args.plot_freq,
+        plot_tag=f"case{target_id}",
+        rotation=config["training"]["rotation"],
+        contrast_outline=edgePoints_contrast,
+      )
+    else:
+      assam = RespiratoryReconstructSSAM(
+        shape=inputCoords,
+        xRay=edgePoints,
+        lmOrder=lmOrder,
+        normals=None,
+        transform=carinaArr[t] * 0.0,
+        img=copy(img),
+        # imgSpacing=spacing_xr,
+        imgCoords=imgCoords,
+        imgCoords_all=ssam.sam.imgCoords_all,
+        imgCoords_axes=config["training"]["img_axes"],
+        density=density,
+        model=modelDict,
+        modeNum=numModes,
+        c_edge=c_edge,
+        c_prior=c_prior,
+        c_dense=c_dense,
+        c_grad=c_grad,
+        c_anatomical=c_anatomical,
+        kernel_distance=kernel_distance,
+        kernel_radius=kernel_radius,
+        quiet=args.quiet,
+        img_names=config["training"]["img_names"],
+        shapes_to_skip_fitting=config["training"]["shapes_to_skip_fit"],
+        plot_freq=args.plot_freq,
+        plot_tag=f"case{target_id}",
+        rotation=config["training"]["rotation"],
+      )
     assam.spacing_xr = spacing_xr
     # import variables to class
     assam.variance = ssam.variance[:numModes]
@@ -1238,8 +1314,6 @@ if __name__ == "__main__":
               ],
             )
           plt.show()
-
-    exit()
     # initialise parameters to be optimised - including initial values + bounds
     optTrans_new = dict.fromkeys(["pose", "scale"])
     optTrans_new["pose"] = [0, 0]
@@ -1254,15 +1328,6 @@ if __name__ == "__main__":
         (-3, 3),
       ]
     )
-    # bounds = np.array(
-    #   [
-    #     (-0.0, 0.01),
-    #     (-0.0, 0.01),
-    #     # (0.7, 1.3),
-    #     (1.0, 1.01),  # (optTrans_new["scale"]*0.9, optTrans_new["scale"]*1.1),
-    #     (-3, 3),
-    #   ]
-    # )
 
     # initialise parameters that control optimisation process
     assam.optimiseStage = "both"  # tell class to optimise shape and pose
@@ -1323,7 +1388,7 @@ if __name__ == "__main__":
       delimiter=",",
     )
     """
-    out_airway_file = out_surf_file.format(tID, 'Airway', 'stl')
+    out_airway_file = out_surf_file.format(target_id, 'Airway', 'stl')
     morph_airway = MorphAirwayTemplateMesh(lm_template[lmOrder['Airway']], 
                                             outShape[lmOrder['Airway']], 
                                             mesh_template,
@@ -1338,7 +1403,7 @@ if __name__ == "__main__":
                                           outShape[lmOrder[lobe]], 
                                           template_lobe_mesh,
                                           quiet=True)
-      out_lobe_file = out_surf_file.format(tID, lobe, 'stl')
+      out_lobe_file = out_surf_file.format(target_id, lobe, 'stl')
       morph_lobe.mesh_target.write(out_lobe_file)
     """
     # if config['training']['num_imgs'] == 1:
@@ -1347,7 +1412,8 @@ if __name__ == "__main__":
     #   plt.scatter(outShape[:, axes[0]], outShape[:, axes[0]], s=2, c="black")
     #   plt.savefig("images/reconstruction/{}.png".format(tag), dpi=200)
     # else:
-    for i, axes in enumerate(config["training"]["img_axes"]):
+    # exit()
+    for i, (axes, angle) in enumerate(zip(config["training"]["img_axes"], config["training"]["rotation"])):
       extent = [
         imgCoords[:, axes[0]].min(),
         imgCoords[:, axes[0]].max(),
@@ -1355,20 +1421,25 @@ if __name__ == "__main__":
         imgCoords[:, axes[1]].max(),
       ]
       plt.close()
+      rot_shape = utils.rotate_coords_about_z(outShape, angle)
       plt.imshow(img.reshape(-1, 500, 500)[i], cmap="gray", extent=extent)
-      plt.scatter(outShape[:, axes[0]], outShape[:, axes[1]], s=2, c="yellow")
+      plt.scatter(rot_shape[:, axes[0]], rot_shape[:, axes[1]], s=2, c="yellow")
       plt.savefig(f"images/reconstruction/{tag}-view{i}.png", dpi=200)
 
     # shape parameters for ground truth
     b_gt = getShapeParameters(
-      inputCoords["ALL"], tLM, assam.model_s["ALL"], assam.std
+      inputCoords["ALL"], target_lm, assam.model_s["ALL"], assam.std
     )
     shape_parameter_diff = b_gt - optAll["b"]
     print("parameter difference is")
     print(shape_parameter_diff)
 
-    distX = utils.euclideanDist(outShape[:, [0]], lmProj_test[0][:, [0]])
-    dist2D = utils.euclideanDist(outShape[:, [0, 2]], lmProj_test[0][:, [0, 2]])
+    distX = utils.euclideanDist(
+      outShape[:, [0]], ground_truth_landmarks[0][:, [0]]
+    )
+    dist2D = utils.euclideanDist(
+      outShape[:, [0, 2]], ground_truth_landmarks[0][:, [0, 2]]
+    )
 
     # plotDensityError(outShape, density_at_lm,
     #                     tag='from1')
@@ -1382,13 +1453,22 @@ if __name__ == "__main__":
       assam.model_g["ALL"][: len(optAll["b"])],
       optAll["b"] * np.sqrt(assam.variance),
     ).reshape(-1, config["training"]["num_imgs"])
+    outShape_base = copy(outShape)
+    ground_truth_landmarks_base = copy(ground_truth_landmarks[t])
     for i in range(0, config["training"]["num_imgs"]):
       # plot
+      # if config["training"]["rotation"][i] == 0:
+      #   pass
+      # else:
+      #   outShape = utils.rotate_coords_about_z(outShape, 45)
+
       density_error_for_point_cloud(
-        outShape,
+        utils.rotate_coords_about_z(
+          outShape, config["training"]["rotation"][i]
+        ),
         imgCoords,
         # img[i],
-        tImg.reshape(-1, 500, 500)[i],
+        target_img.reshape(-1, 500, 500)[i],
         density_from_model[:, i],
         tag=f"reconstructionFromModel_view{i}",
         axes=config["training"]["img_axes"][i],
@@ -1399,19 +1479,25 @@ if __name__ == "__main__":
       test_carina = nodalCoordsOrig[test_index[t], 1]
 
       density_error_for_point_cloud(
-        lmProj_test[t],
+        utils.rotate_coords_about_z(
+          ground_truth_landmarks[t], config["training"]["rotation"][i]
+        ),
         imgCoords,
         # img[i],
-        tImg.reshape(-1, 500, 500)[i],
+        target_img.reshape(-1, 500, 500)[i],
         density_from_model[:, i],
         tag=f"groundTruthFromModel_view{i}",
         axes=config["training"]["img_axes"][i],
       )
 
       density_comparison(
-        outShape,
-        lmProj_test[t],  # +testOrigin[t],
-        tImg.reshape(-1, 500, 500)[i],
+        utils.rotate_coords_about_z(
+          outShape, config["training"]["rotation"][i]
+        ),
+        utils.rotate_coords_about_z(
+          ground_truth_landmarks[t], config["training"]["rotation"][i]
+        ),
+        target_img.reshape(-1, 500, 500)[i],
         imgCoords,
         imgCoords,
         tag=f"_view{i}",

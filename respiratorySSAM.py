@@ -55,6 +55,7 @@ class RespiratorySSAM:
     imgsOrigin,
     imgsSpacing,
     train_size=0.9,
+    rotation=[0],
   ):
     # check all input datasets have same number of samples
     assert (
@@ -89,12 +90,37 @@ class RespiratorySSAM:
       self.density = self.sam.density
     elif imgs.ndim == 4:
       self.sam = RespiratorySAM(lm_ct, imgs[:, 0], imgsOrigin, imgsSpacing)
-      self.sam_left = RespiratorySAM(
-        lm_ct, imgs[:, 1], imgsOrigin, imgsSpacing, axes=[1, 2]
-      )
-      self.density = np.stack(
-        (self.sam.density, self.sam_left.density), axis=-1
-      )
+      # load extra SAM for each DRR projection
+      num_extra_proj = (imgs.shape[1] - 1)
+      sam_extra_proj = [None]*(num_extra_proj)
+      density_extra_proj = [None]*(num_extra_proj)
+      reshape_to_shape = (self.sam.density.shape[0], self.sam.density.shape[1], 1)
+      self.density = self.sam.density.copy().reshape(reshape_to_shape)
+      for extra_proj_i in range(0, num_extra_proj):
+        if rotation[extra_proj_i+1] == 0:
+          sam_extra_proj[extra_proj_i] = RespiratorySAM(
+            lm_ct, imgs[:, extra_proj_i+1], imgsOrigin, imgsSpacing, axes=[1, 2]
+          )
+        else:
+          # print()
+          rot_coords = []
+          for patient in lm_ct:
+            rot_coords_i = utils.rotate_coords_about_z(patient, rotation[extra_proj_i+1])
+            rot_coords.append(rot_coords_i)
+          # rot_coords = utils.rotate_coords_about_z(lm_ct, rotation[extra_proj_i+1])
+          # print(rot_coords)
+          rot_coords = np.array(rot_coords)
+          sam_extra_proj[extra_proj_i] = RespiratorySAM(
+            rot_coords, 
+            imgs[:, extra_proj_i+1], 
+            imgsOrigin, 
+            imgsSpacing, 
+            axes=[0, 2],
+          )
+        density_extra_proj[extra_proj_i] = copy(sam_extra_proj[extra_proj_i].density).reshape(reshape_to_shape)
+        self.density = np.dstack(
+          (self.density, density_extra_proj[extra_proj_i])
+        )
 
     # -initialise appearance model data
     self.imgs = imgs

@@ -417,6 +417,24 @@ def return_t_counter(t, point):
                                     (t[:,2] == p[2])) ][0,3] for p in point])
     return n
 
+def rotate_coords_about_z(coords, angle=45, origin=[0, 0, 0]):
+  """
+  Rotate a 3D point cloud around an angle (in degrees).
+
+  Parameters
+  ----------
+  coords (np.ndarray, N, 3): coordinates in cartesian space
+  angle (float or int): angle to rotate the point cloud by
+  origin (list or np.array): origin to rotate the points around
+  """
+  # if coords.ndim == 2:
+  x_coords = coords[:, 0] - origin[0]
+  y_coords = coords[:, 1] - origin[1]
+  rot_x = x_coords*np.cos(np.radians(angle)) - y_coords*np.sin(np.radians(angle))
+  rot_y = y_coords*np.cos(np.radians(angle)) + x_coords*np.sin(np.radians(angle))
+  rot_coords = np.c_[rot_x + origin[0], rot_y + origin[1], coords[:, 2]]
+  return rot_coords
+
 def plotLoss(lossList, scale="linear", wdir="./", tag=""):
     plt.close()
     fig, ax = plt.subplots(1,1)
