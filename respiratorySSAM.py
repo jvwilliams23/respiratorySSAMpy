@@ -56,6 +56,7 @@ class RespiratorySSAM:
     imgsSpacing,
     train_size=0.9,
     rotation=[0],
+    **kwargs,
   ):
     # check all input datasets have same number of samples
     assert (
@@ -97,26 +98,22 @@ class RespiratorySSAM:
       reshape_to_shape = (self.sam.density.shape[0], self.sam.density.shape[1], 1)
       self.density = self.sam.density.copy().reshape(reshape_to_shape)
       for extra_proj_i in range(0, num_extra_proj):
-        if rotation[extra_proj_i+1] == 0:
-          sam_extra_proj[extra_proj_i] = RespiratorySAM(
-            lm_ct, imgs[:, extra_proj_i+1], imgsOrigin, imgsSpacing, axes=[1, 2]
-          )
-        else:
-          # print()
-          rot_coords = []
-          for patient in lm_ct:
-            rot_coords_i = utils.rotate_coords_about_z(patient, rotation[extra_proj_i+1])
-            rot_coords.append(rot_coords_i)
-          # rot_coords = utils.rotate_coords_about_z(lm_ct, rotation[extra_proj_i+1])
-          # print(rot_coords)
-          rot_coords = np.array(rot_coords)
-          sam_extra_proj[extra_proj_i] = RespiratorySAM(
-            rot_coords, 
-            imgs[:, extra_proj_i+1], 
-            imgsOrigin, 
-            imgsSpacing, 
-            axes=[0, 2],
-          )
+        rot_coords = []
+        for i, patient in enumerate(lm_ct):
+          # centre to rotate points around
+          img_centre = imgsOrigin[i] + (imgsSpacing[i]*500.)/2
+          rot_coords_i = utils.rotate_coords_about_z(patient, rotation[extra_proj_i+1], img_centre)
+          rot_coords.append(rot_coords_i)
+
+        rot_coords = np.array(rot_coords)
+        sam_extra_proj[extra_proj_i] = RespiratorySAM(
+          rot_coords, 
+          imgs[:, extra_proj_i+1], 
+          imgsOrigin, 
+          imgsSpacing, 
+          axes=kwargs["img_coords_axes"][extra_proj_i+1],
+        )
+
         density_extra_proj[extra_proj_i] = copy(sam_extra_proj[extra_proj_i].density).reshape(reshape_to_shape)
         self.density = np.dstack(
           (self.density, density_extra_proj[extra_proj_i])

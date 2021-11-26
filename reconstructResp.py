@@ -198,6 +198,12 @@ def getInputs():
     help="choose random test samples [default is false]",
   )
   parser.add_argument(
+    "--keep_in_training",
+    default=str(False),
+    type=strtobool,
+    help="If true, test data is kept in for training [default is false]",
+  )
+  parser.add_argument(
     "-ts",
     "--testSize",
     default=1,
@@ -225,7 +231,6 @@ def getInputs():
     type=strtobool,
     help="Perform bayesian optimisation and read coeffs from file",
   )
-
 
   args = parser.parse_args()
   return args
@@ -284,13 +289,13 @@ def density_error_for_point_cloud(
 
 
 def density_comparison(
-  out_lms, gt_lms, img, imgCoords_out, imgCoords_gt, tag="", axes=[0, 2]
+  out_lms, gt_lms, img, imgCoords_out, density_at_lm_gt, tag="", axes=[0, 2]
 ):
   """
   For two given point clouds of landmarks, compare density and shape of each
   """
   density_at_lm_out = assam.getDensity(out_lms, img, imgCoords_out, axes=axes)
-  density_at_lm_gt = assam.getDensity(gt_lms, img, imgCoords_gt, axes=axes)
+  # density_at_lm_gt = assam.getDensity(gt_lms, img, imgCoords_gt, axes=axes)
   plt.close()
   fig, ax = plt.subplots(1, 2, figsize=(16 / 2.54, 8 / 2.54))
   ax[0].scatter(
@@ -399,12 +404,17 @@ def newProjLMs(
       projLM_ID,
     )
 
-
   if args.debug:
     key = "Airway"
     x = surfCoords_centred[key][projLM_ID[key]]
     plt.scatter(x[:, 0], x[:, 2], c="black", s=1)
-    plt.scatter(landmarks["Airway"][:,0], landmarks["Airway"][:, 2], c="blue", s=10, alpha=0.3)
+    plt.scatter(
+      landmarks["Airway"][:, 0],
+      landmarks["Airway"][:, 2],
+      c="blue",
+      s=10,
+      alpha=0.3,
+    )
     plt.show()
   # reorder projected surface points to same order as landmarks
   # print("number proj airway pts", len(assam.projLM_ID["Airway"]))
@@ -731,7 +741,10 @@ if __name__ == "__main__":
     drrArr_right = np.rollaxis(
       # np.dstack([utils.loadXR(o)[:-2,:-2][::imgSpaceCoeff,::imgSpaceCoeff]
       np.dstack(
-        [utils.loadXR(o)[::imgSpaceCoeff, ::imgSpaceCoeff] for o in imDirs_right]
+        [
+          utils.loadXR(o)[::imgSpaceCoeff, ::imgSpaceCoeff]
+          for o in imDirs_right
+        ]
       ),
       2,
       0,
@@ -754,7 +767,7 @@ if __name__ == "__main__":
 
   # offset centered coordinates to same reference frame as CT data
   carinaArr = nodalCoordsOrig[:, 1]
-  lmProj = landmarks + carinaArr[:, np.newaxis]
+  landmarks_in_ct_space = landmarks + carinaArr[:, np.newaxis]
 
   # load pre-prepared mean stl and point cloud of all data
   meanArr = landmarks.mean(axis=0)
@@ -764,7 +777,7 @@ if __name__ == "__main__":
   origin = copy(origin)
   spacing = copy(spacing)
   drrArr = copy(drrArr)
-  # landmarks = lmProj.copy()
+  # landmarks = landmarks_in_ct_space.copy()
 
   # format data for testing by randomising selection and removing these
   # from training
@@ -801,9 +814,10 @@ if __name__ == "__main__":
   testSpacing = []
   testIm = []
   testSet.sort()
-  lmProjDef = lmProj.copy()
+  landmarks_in_ct_spaceDef = landmarks_in_ct_space.copy()
   landmarksDef = landmarks.copy()
   ground_truth_landmarks = []
+  ground_truth_landmarks_in_ct_space = []
   for t in testSet[::-1]:
     # store test data in different list
     testID.append(patientIDs[t])
@@ -812,15 +826,19 @@ if __name__ == "__main__":
     testIm.append(drrArr[t])
     testLM.append(copy(landmarks[t]))
     ground_truth_landmarks.append(copy(landmarks[t]))
-
+    # for post-processing
+    ground_truth_landmarks_in_ct_space.append(copy(landmarks_in_ct_space[t]))
     """ """
-    # remove test data from train data
-    patientIDs.pop(t)
-    origin = np.delete(origin, t, axis=0)
-    spacing = np.delete(spacing, t, axis=0)
-    drrArr = np.delete(drrArr, t, axis=0)
-    landmarks = np.delete(landmarks, t, axis=0)
-    lmProj = np.delete(lmProj, t, axis=0)
+    if args.keep_in_training:
+      pass
+    else:
+      # remove test data from train data
+      patientIDs.pop(t)
+      origin = np.delete(origin, t, axis=0)
+      spacing = np.delete(spacing, t, axis=0)
+      drrArr = np.delete(drrArr, t, axis=0)
+      landmarks = np.delete(landmarks, t, axis=0)
+      landmarks_in_ct_space = np.delete(landmarks_in_ct_space, t, axis=0)
     """ """
 
   if randomise_testing:
@@ -834,12 +852,13 @@ if __name__ == "__main__":
   # create appearance model instance and load data
   ssam = RespiratorySSAM(
     landmarks,
-    lmProj,
+    landmarks_in_ct_space,
     drrArr,
     origin,
     spacing,
     train_size=landmarks.shape[0],
     rotation=config["training"]["rotation"],
+    img_coords_axes=config["training"]["img_axes"],
   )
   if testIm[0].ndim == 3:
     # if multiple images for reconstruction, get density for each one
@@ -857,7 +876,8 @@ if __name__ == "__main__":
   numModes = np.where(
     np.cumsum(ssam.pca_sg.explained_variance_ratio_) > describedVariance
   )[0][0]
-  if not args.quiet: print("modes used is", numModes)
+  if not args.quiet:
+    print("modes used is", numModes)
 
   # center the lobes vertically
   # keep vertical alignment term for later use
@@ -964,7 +984,8 @@ if __name__ == "__main__":
   # reorder unstructured stl file to be coherent w/ model and landmarks
   # extract mesh data (coords, normals and faces)
   for key in shapes:
-    if not args.quiet: print(f"loading {key} mesh")
+    if not args.quiet:
+      print(f"loading {key} mesh")
     if not args.quiet:
       print("original num cells", len(mean_mesh[key].faces()))
     if key == "Airway":
@@ -1030,8 +1051,8 @@ if __name__ == "__main__":
     if len(edgePoints) == 1:
       edgePoints = edgePoints[f]
     edgePoints_contrast = np.loadtxt(
-      config["test-set"]["contrast-outline"][0].format(target_id, target_id), 
-      delimiter=","
+      config["test-set"]["contrast-outline"][0].format(target_id, target_id),
+      delimiter=",",
     )
 
     # debug checks to show initial alignment of image with edge map,
@@ -1075,8 +1096,10 @@ if __name__ == "__main__":
               c="black",
             )
           else:
-            coords_rot = utils.rotate_coords_about_z(meanArr, config["training"]["rotation"][i])
-            
+            coords_rot = utils.rotate_coords_about_z(
+              meanArr, config["training"]["rotation"][i]
+            )
+
             ax[1].scatter(edgePoints[i][:, 0], edgePoints[i][:, 1], s=2)
             ax[0].scatter(
               coords_rot[:, config["training"]["img_axes"][i][0]],
@@ -1087,8 +1110,28 @@ if __name__ == "__main__":
             )
             ax[1].scatter(edgePoints[i][:, 0], edgePoints[i][:, 1], s=2)
           plt.show()
+      # check we get correct gray value for the rotated x-rays
+      for i in range(0, config["training"]["num_imgs"]):
+        img_centre = target_origin + (target_spacing*500.)/2
+        coords_rot = utils.rotate_coords_about_z(
+          copy(ground_truth_landmarks_in_ct_space[t]), 
+          config["training"]["rotation"][i], img_centre
+        )
+        img_coords_ground_truth = ssam.sam.drrArrToRealWorld(
+          target_img.reshape(-1, 500, 500)[i], target_origin, target_spacing
+        )[0]
 
-    # exit()
+        ground_truth_density = ssam.sam.getDensity(
+          coords_rot,
+          target_img.reshape(-1, 500, 500)[i],
+          img_coords_ground_truth,
+          config["training"]["img_axes"][i],
+        )
+
+        plt.scatter(coords_rot[:, config["training"]["img_axes"][i][0]], coords_rot[:,2],
+                      c=ground_truth_density, cmap="gray") 
+        plt.show()
+
     # declare posterior shape model class
     if strtobool(config["test-set"]["contrast"][0]) == True:
       assam = RespiratoryReconstructSSAM(
@@ -1360,24 +1403,6 @@ if __name__ == "__main__":
       outShape, optAll["scale"], outShape.mean(axis=0)
     )
 
-    """
-    # population mean density for each landmark, 1D arr with len=num lms
-    density_mean = assam.density.mean(axis=0)
-    # density at landmark location
-
-    density_at_lm = np.stack(
-        [assam.getDensity(outShape, img[i], 
-                          imgCoords[:,config['training']['img_axes'][i]])
-          for i in range(0, config['training']['num_imgs'])], 
-      axis=1
-    )
-    density_from_model = assam.getg_allModes(
-      assam.density.mean(axis=0).reshape(-1),
-      assam.model_g["ALL"][: len(optAll["b"])],
-      optAll["b"] * np.sqrt(assam.variance),
-    ).reshape(-1, config['training']['num_imgs'])
-    """
-
     out_file = "{}_{}.{}"
     out_surf_file = "surfaces/" + out_file
     out_lm_file = "outputLandmarks/" + out_file
@@ -1406,14 +1431,9 @@ if __name__ == "__main__":
       out_lobe_file = out_surf_file.format(target_id, lobe, 'stl')
       morph_lobe.mesh_target.write(out_lobe_file)
     """
-    # if config['training']['num_imgs'] == 1:
-    #   plt.close()
-    #   plt.imshow(img, cmap="gray", extent=extent)
-    #   plt.scatter(outShape[:, axes[0]], outShape[:, axes[0]], s=2, c="black")
-    #   plt.savefig("images/reconstruction/{}.png".format(tag), dpi=200)
-    # else:
-    # exit()
-    for i, (axes, angle) in enumerate(zip(config["training"]["img_axes"], config["training"]["rotation"])):
+    for i, (axes, angle) in enumerate(
+      zip(config["training"]["img_axes"], config["training"]["rotation"])
+    ):
       extent = [
         imgCoords[:, axes[0]].min(),
         imgCoords[:, axes[0]].max(),
@@ -1422,9 +1442,11 @@ if __name__ == "__main__":
       ]
       plt.close()
       rot_shape = utils.rotate_coords_about_z(outShape, angle)
-      plt.imshow(img.reshape(-1, 500, 500)[i], cmap="gray", extent=extent)
-      plt.scatter(rot_shape[:, axes[0]], rot_shape[:, axes[1]], s=2, c="yellow")
-      plt.savefig(f"images/reconstruction/{tag}-view{i}.png", dpi=200)
+      # plt.imshow(img.reshape(-1, 500, 500)[i], cmap="gray", extent=extent)
+      plt.imshow(img[i], cmap="gray", extent=extent)
+      # plt.scatter(rot_shape[:, axes[0]], rot_shape[:, axes[1]], s=2, c="yellow")
+      plt.show()
+      break
 
     # shape parameters for ground truth
     b_gt = getShapeParameters(
@@ -1441,13 +1463,6 @@ if __name__ == "__main__":
       outShape[:, [0, 2]], ground_truth_landmarks[0][:, [0, 2]]
     )
 
-    # plotDensityError(outShape, density_at_lm,
-    #                     tag='from1')
-    # plotDensityError(
-    #   outShape, density_at_lm[:,0], density_from_model[:,0], tag="fromModel_view0"
-    # )
-    # plotDensityError(outShape, density_at_lm, density_mean, tag="fromMean")
-
     density_from_model = assam.getg_allModes(
       assam.density.mean(axis=0).reshape(-1),
       assam.model_g["ALL"][: len(optAll["b"])],
@@ -1456,11 +1471,6 @@ if __name__ == "__main__":
     outShape_base = copy(outShape)
     ground_truth_landmarks_base = copy(ground_truth_landmarks[t])
     for i in range(0, config["training"]["num_imgs"]):
-      # plot
-      # if config["training"]["rotation"][i] == 0:
-      #   pass
-      # else:
-      #   outShape = utils.rotate_coords_about_z(outShape, 45)
 
       density_error_for_point_cloud(
         utils.rotate_coords_about_z(
@@ -1478,37 +1488,45 @@ if __name__ == "__main__":
       test_index = [i for i in range(0, len(lmIDs)) if lmIDs[i] == testID[t]]
       test_carina = nodalCoordsOrig[test_index[t], 1]
 
-      density_error_for_point_cloud(
-        utils.rotate_coords_about_z(
-          ground_truth_landmarks[t], config["training"]["rotation"][i]
-        ),
-        imgCoords,
-        # img[i],
+      # density_error_for_point_cloud(
+      #   utils.rotate_coords_about_z(
+      #     ground_truth_landmarks[t], config["training"]["rotation"][i]
+      #   ),
+      #   imgCoords,
+      #   # img[i],
+      #   target_img.reshape(-1, 500, 500)[i],
+      #   density_from_model[:, i],
+      #   tag=f"groundTruthFromModel_view{i}",
+      #   axes=config["training"]["img_axes"][i],
+      # )
+
+      img_centre = target_origin + (target_spacing*500.)/2
+      coords_rot = utils.rotate_coords_about_z(
+        copy(ground_truth_landmarks_in_ct_space[t]), 
+        config["training"]["rotation"][i], img_centre
+      )
+      img_coords_ground_truth = ssam.sam.drrArrToRealWorld(
+        target_img.reshape(-1, 500, 500)[i], target_origin, target_spacing
+      )[0]
+
+      ground_truth_density = ssam.sam.getDensity(
+        coords_rot,
         target_img.reshape(-1, 500, 500)[i],
-        density_from_model[:, i],
-        tag=f"groundTruthFromModel_view{i}",
-        axes=config["training"]["img_axes"][i],
+        img_coords_ground_truth,
+        config["training"]["img_axes"][i],
       )
 
       density_comparison(
         utils.rotate_coords_about_z(
           outShape, config["training"]["rotation"][i]
         ),
-        utils.rotate_coords_about_z(
-          ground_truth_landmarks[t], config["training"]["rotation"][i]
-        ),
+        coords_rot,
         target_img.reshape(-1, 500, 500)[i],
         imgCoords,
-        imgCoords,
+        density_at_lm_gt=ground_truth_density,
         tag=f"_view{i}",
         axes=config["training"]["img_axes"][i],
       )
-
-    # ax[0].imshow(img, cmap="gray", extent=extent)
-    # ax[0].scatter(edgePoints[:,0], edgePoints[:,1],s=2)
-    # ax[1].scatter(meanArr[:,0], meanArr[:,2],s=1, c="black")
-    # ax[1].scatter(edgePoints[:,0], edgePoints[:,1],s=2, c="blue")
-
 
 """
 # CHECK GROUND TRUTH OVERLAID ON XR
@@ -1524,14 +1542,14 @@ extent=[-img[0].shape[1]/2.*spacing_xr[0]+testOrigin[0][0],
 
 plt.close()
 plt.imshow(img[0], cmap='gray', extent=extent)
-plt.scatter(lmProj_test[0][:,0]+testOrigin[0][0], 
-            lmProj_test[0][:,2]+testOrigin[0][2]+test_carina[2], 
+plt.scatter(ground_truth_landmarks[0][:,0]+testOrigin[0][0], 
+            ground_truth_landmarks[0][:,2]+testOrigin[0][2]+test_carina[2], 
             s=2, c='green')
 plt.show()
 """
 """
 ourShape = outShape - outShape[lmOrder['SKELETON'][1]]
-projTest = copy(lmProj_test[0])
+projTest = copy(ground_truth_landmarks[0])
 airwayProj_pts = lmOrder['Airway'][np.isin(lmOrder['Airway'], assam.projLM_ID['Airway'])]
 
 dist2D_align = utils.euclideanDist(ourShape[:,[0,2]], projTest[:,[0,2]])
@@ -1564,8 +1582,44 @@ for i, (pID, lm, d) in enumerate(zip(patientIDs, landmarks, density)):
 
 airwayProj_pts = lmOrder['Airway'][np.isin(lmOrder['Airway'], assam.projLM_ID['Airway'])]
 ourShape = (outShape - outShape[lmOrder['SKELETON'][1]])[airwayProj_pts]
-projTest = copy(lmProj_test[0])[airwayProj_pts]
+projTest = copy(ground_truth_landmarks[0])[airwayProj_pts]
 plt.close()
 plt.scatter(ourShape[:,0], ourShape[:,2], s=2, c='blue')
 plt.scatter(projTest[:,0], projTest[:,2], s=2, c='black')
 plt.show()"""
+
+
+"""
+
+density_assam = ssam.sam.getDensity(assam.shape["ALL"], assam.img[0], 
+  assam.imgCoords, [0,2])
+
+density_assamimg_landmarks = ssam.sam.getDensity(landmarks[testSet[0]], 
+    assam.img[0], assam.imgCoords, [0,2])
+
+img_coords_ground_truth = ssam.sam.drrArrToRealWorld(img, origin[testSet[0]], target_spacing)[0]
+d_truth = ssam.sam.getDensity(landmarks_in_ct_space[testSet[0]], drrArr[testSet[0]][0], img_coords_ground_truth, [0,2])
+
+
+fig, ax = plt.subplots(1,3)
+# ax[0].scatter(assam.shape["ALL"][:,0], assam.shape["ALL"][:,2],
+#               c = density_assam, cmap="gray")
+ax[0].scatter(landmarks[testSet[0]][:,0], landmarks[testSet[0]][:,2],
+              c = density[testSet[0]][:, 0], cmap="gray")
+ax[1].scatter(landmarks[testSet[0]][:,0], landmarks[testSet[0]][:,2],
+              c = density_assamimg_landmarks, cmap="gray")
+ax[2].scatter(landmarks[testSet[0]][:,0], landmarks[testSet[0]][:,2],
+              c = d_truth, cmap="gray")
+plt.show()
+
+fig, ax = plt.subplots(1,3)
+ax[0].scatter(landmarks[testSet[0]][:,0], landmarks[testSet[0]][:,2],
+              c = density[testSet[0]][:, 0], cmap="gray")
+ax[1].scatter(landmarks[testSet[0]][:,1], landmarks[testSet[0]][:,2],
+              c = density[testSet[0]][:, 1], cmap="gray")
+ax[2].scatter(
+utils.rotate_coords_about_z(landmarks[testSet[0]], 180, landmarks[testSet[0]].mean(axis=0))[:,1],
+                landmarks[testSet[0]][:,2],
+              c = density[testSet[0]][:, 2], cmap="gray")
+plt.show()
+"""
