@@ -544,7 +544,7 @@ if __name__ == "__main__":
     bayes_pts = np.loadtxt("points_to_sample.txt")
     c_dense = bayes_pts[0]
     c_edge = bayes_pts[1]
-    c_prior = bayes_pts[2]
+    c_prior = c_prior = (1.0e-4) ** (bayes_pts[2])
   else:
     c_dense = args.c_dense
     c_edge = args.c_edge
@@ -1112,10 +1112,11 @@ if __name__ == "__main__":
           plt.show()
       # check we get correct gray value for the rotated x-rays
       for i in range(0, config["training"]["num_imgs"]):
-        img_centre = target_origin + (target_spacing*500.)/2
+        img_centre = target_origin + (target_spacing * 500.0) / 2
         coords_rot = utils.rotate_coords_about_z(
-          copy(ground_truth_landmarks_in_ct_space[t]), 
-          config["training"]["rotation"][i], img_centre
+          copy(ground_truth_landmarks_in_ct_space[t]),
+          config["training"]["rotation"][i],
+          img_centre,
         )
         img_coords_ground_truth = ssam.sam.drrArrToRealWorld(
           target_img.reshape(-1, 500, 500)[i], target_origin, target_spacing
@@ -1128,8 +1129,12 @@ if __name__ == "__main__":
           config["training"]["img_axes"][i],
         )
 
-        plt.scatter(coords_rot[:, config["training"]["img_axes"][i][0]], coords_rot[:,2],
-                      c=ground_truth_density, cmap="gray") 
+        plt.scatter(
+          coords_rot[:, config["training"]["img_axes"][i][0]],
+          coords_rot[:, 2],
+          c=ground_truth_density,
+          cmap="gray",
+        )
         plt.show()
 
     # declare posterior shape model class
@@ -1412,27 +1417,9 @@ if __name__ == "__main__":
       header="x, y, z",
       delimiter=",",
     )
-    """
-    out_airway_file = out_surf_file.format(target_id, 'Airway', 'stl')
-    morph_airway = MorphAirwayTemplateMesh(lm_template[lmOrder['Airway']], 
-                                            outShape[lmOrder['Airway']], 
-                                            mesh_template,
-                                            quiet=True)
-    morph_airway.mesh_target.write(out_airway_file)
-    for lobe in lobes:
-      print('morphing', lobe)
-      # lm_template_lobes = np.loadtxt(template_lm_file_lobes.format(key), delimiter=",")
-      template_lobe_mesh = v.load(template_mesh_file_lobes.format(lNums[lobe]))
-      # template_lobe_mesh.decimate(fraction=0.25)
-      morph_lobe = MorphLobarTemplateMesh(lm_template[lmOrder[lobe]], 
-                                          outShape[lmOrder[lobe]], 
-                                          template_lobe_mesh,
-                                          quiet=True)
-      out_lobe_file = out_surf_file.format(target_id, lobe, 'stl')
-      morph_lobe.mesh_target.write(out_lobe_file)
-    """
-    for i, (axes, angle) in enumerate(
-      zip(config["training"]["img_axes"], config["training"]["rotation"])
+
+    for i, (axes, rotation_angle) in enumerate(
+      config["training"]["img_axes"], config["training"]["rotation"]
     ):
       extent = [
         imgCoords[:, axes[0]].min(),
@@ -1440,13 +1427,17 @@ if __name__ == "__main__":
         imgCoords[:, axes[1]].min(),
         imgCoords[:, axes[1]].max(),
       ]
+      coords_rot = utils.rotate_coords_about_z(copy(outShape), rotation_angle)
       plt.close()
-      rot_shape = utils.rotate_coords_about_z(outShape, angle)
-      # plt.imshow(img.reshape(-1, 500, 500)[i], cmap="gray", extent=extent)
-      plt.imshow(img[i], cmap="gray", extent=extent)
-      # plt.scatter(rot_shape[:, axes[0]], rot_shape[:, axes[1]], s=2, c="yellow")
-      plt.show()
-      break
+      plt.imshow(img.reshape(-1, 500, 500)[i], cmap="gray", extent=extent)
+      plt.scatter(
+        coords_rot[:, axes[0]],
+        coords_rot[:, axes[1]],
+        s=2,
+        c="yellow",
+        alpha=0.6,
+      )
+      plt.savefig(f"images/reconstruction/{tag}-view{i}.png", dpi=200)
 
     # shape parameters for ground truth
     b_gt = getShapeParameters(
@@ -1488,22 +1479,11 @@ if __name__ == "__main__":
       test_index = [i for i in range(0, len(lmIDs)) if lmIDs[i] == testID[t]]
       test_carina = nodalCoordsOrig[test_index[t], 1]
 
-      # density_error_for_point_cloud(
-      #   utils.rotate_coords_about_z(
-      #     ground_truth_landmarks[t], config["training"]["rotation"][i]
-      #   ),
-      #   imgCoords,
-      #   # img[i],
-      #   target_img.reshape(-1, 500, 500)[i],
-      #   density_from_model[:, i],
-      #   tag=f"groundTruthFromModel_view{i}",
-      #   axes=config["training"]["img_axes"][i],
-      # )
-
-      img_centre = target_origin + (target_spacing*500.)/2
+      img_centre = target_origin + (target_spacing * 500.0) / 2
       coords_rot = utils.rotate_coords_about_z(
-        copy(ground_truth_landmarks_in_ct_space[t]), 
-        config["training"]["rotation"][i], img_centre
+        copy(ground_truth_landmarks_in_ct_space[t]),
+        config["training"]["rotation"][i],
+        img_centre,
       )
       img_coords_ground_truth = ssam.sam.drrArrToRealWorld(
         target_img.reshape(-1, 500, 500)[i], target_origin, target_spacing
