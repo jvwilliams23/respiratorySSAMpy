@@ -1419,7 +1419,7 @@ if __name__ == "__main__":
     )
 
     for i, (axes, rotation_angle) in enumerate(
-      config["training"]["img_axes"], config["training"]["rotation"]
+      zip(config["training"]["img_axes"], config["training"]["rotation"])
     ):
       extent = [
         imgCoords[:, axes[0]].min(),
@@ -1461,28 +1461,29 @@ if __name__ == "__main__":
     ).reshape(-1, config["training"]["num_imgs"])
     outShape_base = copy(outShape)
     ground_truth_landmarks_base = copy(ground_truth_landmarks[t])
-    for i in range(0, config["training"]["num_imgs"]):
-
+    for i, (rotation_angle, axes) in enumerate(
+      zip(config["training"]["rotation"], config["training"]["img_axes"])
+    ):
+      # plot density error between modelled gray-value and landmark gray-value
       density_error_for_point_cloud(
-        utils.rotate_coords_about_z(
-          outShape, config["training"]["rotation"][i]
-        ),
+        utils.rotate_coords_about_z(outShape, rotation_angle),
         imgCoords,
         # img[i],
         target_img.reshape(-1, 500, 500)[i],
         density_from_model[:, i],
         tag=f"reconstructionFromModel_view{i}",
-        axes=config["training"]["img_axes"][i],
+        axes=axes,
       )
 
       # get density error for true landmarks
       test_index = [i for i in range(0, len(lmIDs)) if lmIDs[i] == testID[t]]
       test_carina = nodalCoordsOrig[test_index[t], 1]
 
+      # rotate ground truth dataset to get density for comparison
       img_centre = target_origin + (target_spacing * 500.0) / 2
       coords_rot = utils.rotate_coords_about_z(
         copy(ground_truth_landmarks_in_ct_space[t]),
-        config["training"]["rotation"][i],
+        rotation_angle,
         img_centre,
       )
       img_coords_ground_truth = ssam.sam.drrArrToRealWorld(
@@ -1493,19 +1494,18 @@ if __name__ == "__main__":
         coords_rot,
         target_img.reshape(-1, 500, 500)[i],
         img_coords_ground_truth,
-        config["training"]["img_axes"][i],
+        axes,
       )
 
+      # plot error between target gray-value and ground-truth density
       density_comparison(
-        utils.rotate_coords_about_z(
-          outShape, config["training"]["rotation"][i]
-        ),
+        utils.rotate_coords_about_z(outShape, rotation_angle),
         coords_rot,
         target_img.reshape(-1, 500, 500)[i],
         imgCoords,
         density_at_lm_gt=ground_truth_density,
         tag=f"_view{i}",
-        axes=config["training"]["img_axes"][i],
+        axes=axes,
       )
 
 """
