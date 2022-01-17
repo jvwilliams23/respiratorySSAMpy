@@ -21,7 +21,7 @@ parser.add_argument('--caseID', '-c',
 parser.add_argument('--filename', '-f',
                     default='reconstruction', 
                     type=str,
-                    help='string for filename [default is reconstruction_case]'
+                    help='string for filename [default is reconstruction]'
                     )
 parser.add_argument('--landmark_dir', '-ld',
                     default="allLandmarks/", 
@@ -118,7 +118,7 @@ if __name__ == "__main__":
       target_lms[landmark_ordering[lung]],
       template_lung_mesh,
       sigma=0.3,
-      quiet=False,
+      quiet=True,
     )
     target_lung_surf_out = f"{surf_dir}/{target_lm_file_name}_{lung}.stl"
     morph_lung.mesh_target.write(target_lung_surf_out)

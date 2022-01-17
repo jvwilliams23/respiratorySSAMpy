@@ -583,6 +583,10 @@ if __name__ == "__main__":
 
   if view != "frontal":
     tag = tag + "-lateral-" + view.lower() #[0].lower()
+
+  if debug:
+    show_image(convCTxr.xray_2D)
+    exit()
   # save image and write metadata file with pixel spacing
   save_image(convCTxr.xray_2D, writeDir + "drr-" + tag + ".png")
   # show_image(convCTxr.xray_2D)

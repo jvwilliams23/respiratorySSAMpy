@@ -44,7 +44,7 @@ from respiratorySSAM import RespiratorySSAM
 from respiratorySSM import RespiratorySSM
 
 tag = "_case0"
-template_mesh = "segmentations/template3948/newtemplate3948_mm.stl"
+template_mesh = "segmentations/template3948/newtemplate3948_mm-orig.stl"
 plotAlignment = False
 
 
@@ -137,13 +137,6 @@ def getInputs():
     help="input files (drr)",
   )
   parser.add_argument(
-    "--meshdir",
-    "-m",
-    default="segmentations/",
-    type=str,
-    help="directory of surface files",
-  )
-  parser.add_argument(
     "--shapes",
     default="Airway RUL RML RLL LUL LLL",
     type=str,
@@ -164,13 +157,6 @@ def getInputs():
     default=4000,
     type=int,
     help="number of optimisation iterations",
-  )
-  parser.add_argument(
-    "--xray",
-    "-x",
-    default=False,
-    type=str,  # required=True,
-    help="X-ray outline to use for fitting (2xN csv)",
   )
   parser.add_argument(
     "--newMean",
@@ -535,6 +521,7 @@ def matchesFromRegex(path):
 
 if __name__ == "__main__":
   args = getInputs()
+  optimiser_kwargs = {}
   date_today = str(date.today())
   if not args.quiet:
     print(__doc__)
@@ -547,18 +534,18 @@ if __name__ == "__main__":
   drrDir = args.drrs
   debug = args.debug
   shapes = args.shapes.split()
-  surfDir = args.meshdir
   numEpochs = args.epochs
-  xrayEdgeFile = args.xray
   if args.bayesian_opt:
     bayes_pts = np.loadtxt("points_to_sample.txt")
     c_dense = bayes_pts[0]
     c_edge = bayes_pts[1]
     c_prior = c_prior = (1.0e-4) ** (bayes_pts[2])
+    optimiser_kwargs["c_edge_noisy_multiplier"] = bayes_pts[3]
   else:
     c_dense = args.c_dense
     c_edge = args.c_edge
     c_prior = args.c_prior
+    optimiser_kwargs["c_edge_noisy_multiplier"] = 0.002
   print(f"c_dense is {c_dense}")
   print(f"c_edge is {c_edge}")
   print(f"c_prior is {c_prior}")
@@ -590,9 +577,6 @@ if __name__ == "__main__":
   # numbering for each lobe in file
   lNums = {"RUL": "4", "RML": "5", "RLL": "6", "LUL": "7", "LLL": "8"}
 
-  # landmarkDir, case, tag, describedVariance, drrDir, debug, \
-  #         shapes, surfDir, numEpochs, xrayEdgeFile, \
-  #         c_edge, c_dense, c_prior, imgSpaceCoeff = getInputs()
   img = None
   spacing_xr = None
 
@@ -644,12 +628,6 @@ if __name__ == "__main__":
       "\nPlease check your input arguments.",
     )
     exit()
-  # transDirs = glob( "savedPointClouds/allLandmarks/"
-  #                             +"transformParams_case*"
-  #                             +"_m_"+shape+".dat")
-  # transDirs_all = glob( "savedPointClouds/allLandmarks/"
-  #                             +"transformParams_case*"
-  #                             +"_m_"+shape+".dat")
 
   # remove scans without landmarks from DRR dirs
   missing = []
@@ -669,20 +647,6 @@ if __name__ == "__main__":
     patientIDs.pop(dId)
   missing = []
   missingID = []
-  # exit()
-  # for p, pID in enumerate(patientIDs):
-  #   if pID not in imDirs:
-  #     missing.append(p)
-  #     missingID.append(pID)
-  # '''loop in reverse so no errors due to index being deleted
-  #     i.e. delete index 12, then next item to delete is 21,
-  #     but beca  use a previous element has been removed, you delete item 20'''
-  # for m in missing[::-1]:
-  #   landmarkDirs.pop(m)
-  #   patientIDs.pop(m)
-  #   originDirs.pop(m)
-  #   spacingDirs.pop(m)
-  #   imDirs.pop(m)
 
   landmarks = np.array(
     [np.loadtxt(l, delimiter=",", skiprows=1) for l in landmarkDirs]
@@ -713,17 +677,6 @@ if __name__ == "__main__":
   nx.write_gpickle(
     lgraph_branches, "skelGraphs/nxGraphLandmarkMeanBranchesOnly.pickle"
   )
-  # extra code below to visualise graph if desired
-  # lines = []
-  # vp = v.Plotter()
-  # for edge in lgraph.edges:
-  #   l = v.Line(lgraph.nodes[edge[0]]['pos'], lgraph.nodes[edge[1]]['pos'],
-  #               lw=4, c='black')
-  #   lines.append(l)
-  # pNodes = v.Points(landmarks.mean(axis=0)[lmOrder['SKELETON']],r=10,c='black')
-  # vp.show(lines,pNodes)
-  # vp.show(interactive=True)
-
   # read appearance modelling data
   origin = np.vstack([np.loadtxt(o, skiprows=1)] for o in originDirs)
   spacing = np.vstack(
@@ -787,7 +740,6 @@ if __name__ == "__main__":
   origin = copy(origin)
   spacing = copy(spacing)
   drrArr = copy(drrArr)
-  # landmarks = landmarks_in_ct_space.copy()
 
   # format data for testing by randomising selection and removing these
   # from training
@@ -920,7 +872,7 @@ if __name__ == "__main__":
   newMean = args.newMean
   # create mesh for population average from a morphing algorithm
   templateDir = "templates/coarserTemplates_noFissures/"
-  mean_shape_file = templateDir + "meanAirway.stl"
+  mean_shape_file = templateDir + "meanAirway-orig.stl"
 
   # assert  glob(mean_shape_file) != 0 or not newMean, 'error in loading meshes. We created coarsened ones manually - do not overwrite'
   if glob(mean_shape_file) == 0 or newMean:
@@ -929,7 +881,7 @@ if __name__ == "__main__":
     # template_lmFile = 'landmarks/manual-jw-diameterFromSurface/landmarks3948_diameterFromSurf.csv'
     template_lmFile = f"{args.inp}/allLandmarks3948.csv"
     template_airway_file = (
-      "segmentations/template3948/smooth_newtemplate3948_mm.stl"
+      "segmentations/template3948/smooth_newtemplate3948_mm-orig.stl"
     )
     lm_template = np.loadtxt(
       template_lmFile, skiprows=1, delimiter=",", usecols=[0, 1, 2]
@@ -962,7 +914,7 @@ if __name__ == "__main__":
       lm_template = np.loadtxt(
         template_lmFile, skiprows=1, delimiter=",", usecols=[0, 1, 2]
       )
-      template_mesh_file_lobes = "templates/8684_mm_{}.stl"
+      template_mesh_file_lobes = "templates/8684_mm_{}-orig.stl"
       # template_mesh_file_lobes = "/home/josh/3DSlicer/project/luna16Rescaled/case3948/3948_mm_{}.stl"
       # lm_template_lobes = np.loadtxt(template_lm_file_lobes.format(key), delimiter=",")
       template_lobe_mesh = v.load(template_mesh_file_lobes.format(lNums[lobe]))
@@ -973,7 +925,7 @@ if __name__ == "__main__":
         sigma=0.3,
         quiet=True,#args.quiet,
       )
-      mean_lobe_file_out = templateDir + f"mean{lobe}.stl"
+      mean_lobe_file_out = templateDir + f"mean{lobe}-orig.stl"
       morph_lobe.mesh_target.write(mean_lobe_file_out)
       np.savetxt(
         templateDir + f"mean{lobe}.csv",
@@ -983,7 +935,7 @@ if __name__ == "__main__":
       )
 
   for key in shapes:
-    mean_shape_file = templateDir + f"mean{key}.stl"
+    mean_shape_file = templateDir + f"mean{key}-orig.stl"
     assert (
       len(glob(mean_shape_file)) > 0
     ), f"file {mean_shape_file} does not exist!"
@@ -1053,17 +1005,28 @@ if __name__ == "__main__":
     # edge points in units of pixels from edge map
     edgePoints = [None] * len(config["test-set"]["outlines"])
     for f, file in enumerate(config["test-set"]["outlines"]):
-      file_re = config["test-set"]["outlines"][f].format(target_id, target_id)
-      print(file_re)
-      edgePoints[f] = np.loadtxt(file_re, delimiter=",")
+      file_regex = config["test-set"]["outlines"][f].format(target_id, target_id)
+      print(file_regex)
+      edgePoints[f] = np.loadtxt(file_regex, delimiter=",")
       edgePoints[f] = np.unique(edgePoints[f], axis=0)
+
+    if "outline_noisy" in config["test-set"]:
+      file_regex = config["test-set"]["outline_noisy"].format(target_id, target_id)
+      print(file_regex)
+      edgePoints_noisy = np.loadtxt(file_regex, delimiter=",")
+      edgePoints_noisy = np.unique(edgePoints_noisy, axis=0)
+      optimiser_kwargs["outline_noisy"] = edgePoints_noisy
+
     # if only 1 x-ray given, change shape from list of 2D arrays to one 2D array
     if len(edgePoints) == 1:
       edgePoints = edgePoints[f]
-    edgePoints_contrast = np.loadtxt(
-      config["test-set"]["contrast-outline"][0].format(target_id, target_id),
-      delimiter=",",
-    )
+    if "outline_contrast" in config["test-set"]:
+      print("Reading contrast outline")
+      edgePoints_contrast = np.loadtxt(
+        config["test-set"]["outline_contrast"][0].format(target_id, target_id),
+        delimiter=",",
+      )
+      optimiser_kwargs["outline_contrast"] = edgePoints_contrast
 
     # debug checks to show initial alignment of image with edge map,
     # and mean shape with edge map
@@ -1156,65 +1119,36 @@ if __name__ == "__main__":
         
 
     # declare posterior shape model class
-    if strtobool(config["test-set"]["contrast"][0]) == True:
-      assam = RespiratoryReconstructSSAM(
-        shape=inputCoords,
-        xRay=edgePoints,
-        lmOrder=lmOrder,
-        normals=None,
-        transform=carinaArr[t] * 0.0,
-        img=copy(img),
-        # imgSpacing=spacing_xr,
-        imgCoords=imgCoords,
-        imgCoords_all=ssam.sam.imgCoords_all,
-        imgCoords_axes=config["training"]["img_axes"],
-        density=density,
-        model=modelDict,
-        modeNum=numModes,
-        c_edge=c_edge,
-        c_prior=c_prior,
-        c_dense=c_dense,
-        c_grad=c_grad,
-        c_anatomical=c_anatomical,
-        kernel_distance=kernel_distance,
-        kernel_radius=kernel_radius,
-        quiet=args.quiet,
-        img_names=config["training"]["img_names"],
-        shapes_to_skip_fitting=config["training"]["shapes_to_skip_fit"],
-        plot_freq=args.plot_freq,
-        plot_tag=f"case{target_id}",
-        rotation=config["training"]["rotation"],
-        contrast_outline=edgePoints_contrast,
-      )
-    else:
-      assam = RespiratoryReconstructSSAM(
-        shape=inputCoords,
-        xRay=edgePoints,
-        lmOrder=lmOrder,
-        normals=None,
-        transform=carinaArr[t] * 0.0,
-        img=copy(img),
-        # imgSpacing=spacing_xr,
-        imgCoords=imgCoords,
-        imgCoords_all=ssam.sam.imgCoords_all,
-        imgCoords_axes=config["training"]["img_axes"],
-        density=density,
-        model=modelDict,
-        modeNum=numModes,
-        c_edge=c_edge,
-        c_prior=c_prior,
-        c_dense=c_dense,
-        c_grad=c_grad,
-        c_anatomical=c_anatomical,
-        kernel_distance=kernel_distance,
-        kernel_radius=kernel_radius,
-        quiet=args.quiet,
-        img_names=config["training"]["img_names"],
-        shapes_to_skip_fitting=config["training"]["shapes_to_skip_fit"],
-        plot_freq=args.plot_freq,
-        plot_tag=f"case{target_id}",
-        rotation=config["training"]["rotation"],
-      )
+    assam = RespiratoryReconstructSSAM(
+      shape=inputCoords,
+      xRay=edgePoints,
+      lmOrder=lmOrder,
+      normals=None,
+      transform=carinaArr[t] * 0.0,
+      img=copy(img),
+      # imgSpacing=spacing_xr,
+      imgCoords=imgCoords,
+      imgCoords_all=ssam.sam.imgCoords_all,
+      imgCoords_axes=config["training"]["img_axes"],
+      density=density,
+      model=modelDict,
+      modeNum=numModes,
+      c_edge=c_edge,
+      c_prior=c_prior,
+      c_dense=c_dense,
+      c_grad=c_grad,
+      c_anatomical=c_anatomical,
+      kernel_distance=kernel_distance,
+      kernel_radius=kernel_radius,
+      quiet=args.quiet,
+      img_names=config["training"]["img_names"],
+      shapes_to_skip_fitting=config["training"]["shapes_to_skip_fit"],
+      plot_freq=args.plot_freq,
+      plot_tag=f"case{target_id}",
+      rotation=config["training"]["rotation"],
+      **optimiser_kwargs,
+    )
+
     assam.spacing_xr = spacing_xr
     # import variables to class
     assam.variance = ssam.variance[:numModes]
@@ -1341,7 +1275,6 @@ if __name__ == "__main__":
     assam.projLM_IDAll = []
     pointCounter = 0
     for key in assam.projLM_ID.keys():
-      print(f"\n{key}")
       if key not in ["Airway", "RML"]:
         assam.projLM_IDAll.extend(
           list(np.array(assam.projLM_ID[key]) + pointCounter)

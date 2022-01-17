@@ -25,7 +25,7 @@ import argparse
 class MorphTemplateMesh:
 
   def __init__(self, lm_template, lm_target, mesh_template, 
-                kernel="gaussian", sigma=0.1, c_factor=1, beta=-0.15, 
+                kernel="gaussian", sigma=0.3, c_factor=1, beta=-0.15, 
                 smooth=False, debug=False, quiet=False):
 
     self.sigma = sigma
@@ -233,7 +233,7 @@ def inputs():
                       )
   parser.add_argument('--sigma', 
                       type=float, 
-                      default=0.1,
+                      default=0.3,
                       help='kernel width'
                       )
   parser.add_argument('--debug', '-d',

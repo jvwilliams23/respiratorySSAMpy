@@ -45,7 +45,7 @@ parser.add_argument('--caseID', '-c',
 parser.add_argument('--filename', '-f',
                     default='reconstruction', 
                     type=str,
-                    help='string for filename [default is reconstruction_case]'
+                    help='string for filename [default is reconstruction]'
                     )
 parser.add_argument('--out_dir', '-o',
                     default="morphologicalAnalysis/", 

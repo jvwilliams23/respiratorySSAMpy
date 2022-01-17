@@ -952,7 +952,7 @@ if __name__ == "__main__":
       lm_template = np.loadtxt(
         template_lmFile, skiprows=1, delimiter=",", usecols=[0, 1, 2]
       )
-      template_mesh_file_lobes = "/home/josh/3DSlicer/project/luna16Rescaled/case8684_smooth/8684_mm_{}.stl"
+      template_mesh_file_lobes = "templates/8684_mm_{}.stl"
       # template_mesh_file_lobes = "/home/josh/3DSlicer/project/luna16Rescaled/case3948/3948_mm_{}.stl"
       # lm_template_lobes = np.loadtxt(template_lm_file_lobes.format(key), delimiter=",")
       template_lobe_mesh = v.load(template_mesh_file_lobes.format(lNums[lobe]))

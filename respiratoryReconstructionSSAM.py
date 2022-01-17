@@ -192,12 +192,19 @@ class RespiratoryReconstructSSAM:
         self.scaleShape(shape), self.density.mean(axis=0)
       )
 
-    if "contrast_outline" in kwargs.keys():
+    if "outline_contrast" in kwargs.keys():
       print("outline found for contrast X-ray")
-      self.contrast_outline_found = True
-      self.contrast_outline = kwargs["contrast_outline"]
+      self.outline_contrast_found = True
+      self.outline_contrast = kwargs["outline_contrast"]
     else:
-      self.contrast_outline_found = False
+      self.outline_contrast_found = False
+
+    if "outline_noisy" in kwargs.keys():
+      print("found noisy outline")
+      self.outline_noisy_found = True
+      self.outline_noisy = kwargs["outline_noisy"]
+      self.c_edge_noisy = self.c_edge*kwargs["c_edge_noisy_multiplier"]
+      print("c_edge_noisy", self.c_edge_noisy)
 
   def rescaleProjection(self, img):
     """
@@ -286,10 +293,18 @@ class RespiratoryReconstructSSAM:
     lobe_morphed = dict.fromkeys(self.lobes)
     for lobe in self.lobes:
       lobe_morphed[lobe] = all_morphed[self.lmOrder[lobe]]
+
     # get losses
     fit = self.fitTerm(xRay, lobe_morphed, shapenorms)
-    if self.contrast_outline_found:
-      fit += self.contrast_fit(self.contrast_outline, airway_morphed)*0.5
+    if self.outline_contrast_found:
+      fit += self.contrast_fit(self.outline_contrast, airway_morphed)*0.5
+    if self.outline_noisy_found:
+      lungs_to_fit = []
+      for lobe in self.lobes:
+        if lobe == "RML": continue
+        lungs_to_fit.append(lobe_morphed[lobe])
+      lungs_to_fit = np.vstack(lungs_to_fit)
+      fit += self.c_edge_noisy*self.contrast_fit(self.outline_noisy, lungs_to_fit)
     loss_anatomicalShadow = 0.0
     if self.number_of_imgs > 1:
       density_t = [None] * self.number_of_imgs
@@ -870,7 +885,6 @@ class RespiratoryReconstructSSAM:
     fit = self.fitLoss(shape[:, [0, 2]], xRay, scaler) / len(shape)
     return fit
 
-
   def normalisedDistance(self, shape1, shape2, scaler=5):
     """
     Find closest normalised distance between two point clouds
@@ -920,8 +934,8 @@ class RespiratoryReconstructSSAM:
     elif type(self.xRay) == np.ndarray:
       xRay_i = self.xRay.copy()
     plt.scatter(xRay_i[:, 0], xRay_i[:, 1], s=4, c="black")
-    if self.contrast_outline_found:
-      plt.scatter(self.contrast_outline[:, 0], self.contrast_outline[:, 1], s=4, c="pink")
+    if self.outline_contrast_found:
+      plt.scatter(self.outline_contrast[:, 0], self.outline_contrast[:, 1], s=4, c="pink")
     # plt.scatter(coords[self.projLM_IDAll,0],
     #             coords[self.projLM_IDAll,2],
     #             s=2, c='yellow')

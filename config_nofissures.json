@@ -52,12 +52,12 @@
   {
     // outline dirs
     // "outlines" : ["DRRs/luna16/{}/drr-outline-{}.csv",],
-    "outlines" : ["DRRs/luna16/{}/drr-outline-{}.csv",
+    "outline_noisy" : "DRRs/luna16/{}/drr-outline-{}.csv",
+    "outlines" : ["DRRs/luna16/{}/drr-outline-{}-gaussianblur.csv", //
                   "DRRs/luna16/{}/drr-outline-{}-lateral-left.csv",
                   // "DRRs/luna16/{}/drr-outline-{}-lateral-right.csv",
                 ],
-    "contrast" : "False",
-    "contrast-outline" : ["DRRs/luna16/{}/drr-outline-{}-contrast2000.csv",],
+    // "outline_contrast" : ["DRRs/luna16/{}/drr-outline-{}-contrast2000.csv",],
   }
 }
 
