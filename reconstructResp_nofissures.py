@@ -58,6 +58,13 @@ def getInputs():
     help="input files (landmarks)",
   )
   parser.add_argument(
+    "--config",
+    "-cf",
+    default="config_nofissures.json",
+    type=str,
+    help="input config file [default 'config_nofissures.json']",
+  )
+  parser.add_argument(
     "--load_data_only",
     default="False",
     type=strtobool,
@@ -581,7 +588,7 @@ if __name__ == "__main__":
   spacing_xr = None
 
   print("\tReading data")
-  with open("config_nofissures.json") as f:
+  with open(args.config) as f:
     config = hjson.load(f)
   # read DRR data
   originDirs = filesFromRegex(config["luna16paths"]["origins"])
