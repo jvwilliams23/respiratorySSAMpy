@@ -414,12 +414,14 @@ def newProjLMs(
       alpha=0.3,
     )
     if args.debug == "s":
-      plt.savefig(f"images/reconstruction/debug/debug_newProjLMs_plane{plane}.png")
+      plt.savefig(
+        f"images/reconstruction/debug/debug_newProjLMs_plane{plane}.png"
+      )
     else:
       plt.show()
   # reorder projected surface points to same order as landmarks
   # print("number proj airway pts", len(assam.projLM_ID["Airway"]))
-  
+
   for key in shapes:
     if not args.quiet:
       print("reordering projected landmarks for", key)
@@ -435,7 +437,7 @@ def newProjLMs(
         newProjPos.append(landmarks[key][closest_lm_index, [0, 2]])
     projLM_ID[key] = copy(newProjIDs)
     projLM[key] = copy(np.vstack(newProjPos))
-  
+
   return projLM, projLM_ID
 
 
@@ -748,71 +750,101 @@ if __name__ == "__main__":
   spacing = copy(spacing)
   drrArr = copy(drrArr)
 
-  # format data for testing by randomising selection and removing these
-  # from training
-  assignedTestIDs = ["0645", "3948", "5268", "6730", "8865"]
-  assignedTestIDs = ["3948"]
-  assignedTestIDs = [case]
-  testSize = args.testSize
-  testID = []
-  randomise_testing = args.randomise  # False
-  default_patientIDs = copy(patientIDs)
-  if randomise_testing or assignedTestIDs[0] == "none":
-    assignedTestIDs = []
-    testSet = np.random.randint(0, len(patientIDs) - 1, testSize)
-    # check if test and training datasets share overlapping samples
-    testOverlapTrain = True
-    while np.unique(testSet).size != testSize and testOverlapTrain:
-      testSet = np.random.randint(0, len(patientIDs) - 1, testSize)
-      testOverlapTrain = [True for p in testID if p in assignedTestIDs]
-
-      for t in testSet[::-1]:
-        # store test data in different list
-        testID.append(patientIDs[t])
-    print("randomising testing")
+  # see if we use unseen image from different dataset, or use one from Luna16
+  if "test_unseen_image" not in config["test-set"].keys():
+    test_unseen_image = False
   else:
-    testSet = []
-    # assignedTestIDs = ["9484"]
-    # assignedTestIDs = ["5268"]
-    for i, pID in enumerate(patientIDs):
-      if pID in assignedTestIDs:
-        testSet.append(i)
+    test_unseen_image = bool(
+      strtobool(config["test-set"]["test_unseen_image"][0])
+    )
 
-  testLM = []
-  testOrigin = []
-  testSpacing = []
-  testIm = []
-  testSet.sort()
-  landmarks_in_ct_spaceDef = landmarks_in_ct_space.copy()
-  landmarksDef = landmarks.copy()
-  ground_truth_landmarks = []
-  ground_truth_landmarks_in_ct_space = []
-  for t in testSet[::-1]:
-    # store test data in different list
-    testID.append(patientIDs[t])
-    testOrigin.append(origin[t])
-    testSpacing.append(spacing[t])
-    testIm.append(drrArr[t])
-    testLM.append(copy(landmarks[t]))
-    ground_truth_landmarks.append(copy(landmarks[t]))
-    # for post-processing
-    ground_truth_landmarks_in_ct_space.append(copy(landmarks_in_ct_space[t]))
-    """ """
-    if args.keep_in_training:
-      pass
+  if test_unseen_image:
+    # get data for unseen test image
+    testID = ["unseen"+case]
+    test_img_files = [
+      config["test-set"]["unseen_image"]["img_front"],
+      config["test-set"]["unseen_image"]["img_left"],
+    ]
+    testIm = [np.rollaxis(
+          np.dstack(
+            [
+              utils.loadXR(f)[::imgSpaceCoeff, ::imgSpaceCoeff]
+              for f in test_img_files
+            ]
+          ),
+          2,
+          0,
+        )]
+    testOrigin = [np.loadtxt(
+          config["test-set"]["unseen_image"]["origin"], skiprows=1
+        )]
+    testSpacing = [np.loadtxt(
+          config["test-set"]["unseen_image"]["spacing"], skiprows=1
+        )]
+
+  else:
+    # format data for testing by randomising selection and removing these
+    # from training
+    assignedTestIDs = [case]
+    testSize = args.testSize
+    testID = []
+    randomise_testing = args.randomise  # False
+    default_patientIDs = copy(patientIDs)
+    if randomise_testing or assignedTestIDs[0] == "none":
+      assignedTestIDs = []
+      testSet = np.random.randint(0, len(patientIDs) - 1, testSize)
+      # check if test and training datasets share overlapping samples
+      testOverlapTrain = True
+      while np.unique(testSet).size != testSize and testOverlapTrain:
+        testSet = np.random.randint(0, len(patientIDs) - 1, testSize)
+        testOverlapTrain = [True for p in testID if p in assignedTestIDs]
+
+        for t in testSet[::-1]:
+          # store test data in different list
+          testID.append(patientIDs[t])
+      print("randomising testing")
     else:
-      # remove test data from train data
-      patientIDs.pop(t)
-      origin = np.delete(origin, t, axis=0)
-      spacing = np.delete(spacing, t, axis=0)
-      drrArr = np.delete(drrArr, t, axis=0)
-      landmarks = np.delete(landmarks, t, axis=0)
-      landmarks_in_ct_space = np.delete(landmarks_in_ct_space, t, axis=0)
-    """ """
+      testSet = []
+      # assignedTestIDs = ["9484"]
+      # assignedTestIDs = ["5268"]
+      for i, pID in enumerate(patientIDs):
+        if pID in assignedTestIDs:
+          testSet.append(i)
 
-  if randomise_testing:
-    print("test IDs are", testID)
-  assert len(testID) != 0, "no testID selected"
+    testLM = []
+    testOrigin = []
+    testSpacing = []
+    testIm = []
+    testSet.sort()
+    landmarks_in_ct_spaceDef = landmarks_in_ct_space.copy()
+    landmarksDef = landmarks.copy()
+    ground_truth_landmarks = []
+    ground_truth_landmarks_in_ct_space = []
+    for t in testSet[::-1]:
+      # store test data in different list
+      testID.append(patientIDs[t])
+      testOrigin.append(origin[t])
+      testSpacing.append(spacing[t])
+      testIm.append(drrArr[t])
+      testLM.append(copy(landmarks[t]))
+      ground_truth_landmarks.append(copy(landmarks[t]))
+      # for post-processing
+      ground_truth_landmarks_in_ct_space.append(copy(landmarks_in_ct_space[t]))
+      """ """
+      if args.keep_in_training:
+        pass
+      else:
+        # remove test data from train data
+        patientIDs.pop(t)
+        origin = np.delete(origin, t, axis=0)
+        spacing = np.delete(spacing, t, axis=0)
+        drrArr = np.delete(drrArr, t, axis=0)
+        landmarks = np.delete(landmarks, t, axis=0)
+        landmarks_in_ct_space = np.delete(landmarks_in_ct_space, t, axis=0)
+      """ """
+    if randomise_testing:
+      print("test IDs are", testID)
+    assert len(testID) != 0, "no testID selected"
 
   meanArr = landmarks.mean(axis=0)
 
@@ -906,7 +938,7 @@ if __name__ == "__main__":
       meanArr[lmOrder["Airway"]],
       template_airway_mesh,
       sigma=0.3,
-      quiet=True,#args.quiet,
+      quiet=True,  # args.quiet,
     )
     morph_airway.mesh_target.write(mean_shape_file)
     np.savetxt(
@@ -930,7 +962,7 @@ if __name__ == "__main__":
         meanArr[lmOrder[lobe]],
         template_lobe_mesh,
         sigma=0.3,
-        quiet=True,#args.quiet,
+        quiet=True,  # args.quiet,
       )
       mean_lobe_file_out = templateDir + f"mean{lobe}-orig.stl"
       morph_lobe.mesh_target.write(mean_lobe_file_out)
@@ -993,11 +1025,10 @@ if __name__ == "__main__":
   save_initial_coords = copy(inputCoords)
   for t, (
     target_id,
-    target_lm,
     target_img,
     target_origin,
     target_spacing,
-  ) in enumerate(zip(testID, testLM, testIm, testOrigin, testSpacing)):
+  ) in enumerate(zip(testID, testIm, testOrigin, testSpacing)):
 
     tag = tagBase + "_case" + target_id
     # load image directly from training data
@@ -1012,13 +1043,17 @@ if __name__ == "__main__":
     # edge points in units of pixels from edge map
     edgePoints = [None] * len(config["test-set"]["outlines"])
     for f, file in enumerate(config["test-set"]["outlines"]):
-      file_regex = config["test-set"]["outlines"][f].format(target_id, target_id)
+      file_regex = config["test-set"]["outlines"][f].format(
+        target_id, target_id
+      )
       print(file_regex)
       edgePoints[f] = np.loadtxt(file_regex, delimiter=",")
       edgePoints[f] = np.unique(edgePoints[f], axis=0)
 
     if "outline_noisy" in config["test-set"]:
-      file_regex = config["test-set"]["outline_noisy"].format(target_id, target_id)
+      file_regex = config["test-set"]["outline_noisy"].format(
+        target_id, target_id
+      )
       print(file_regex)
       edgePoints_noisy = np.loadtxt(file_regex, delimiter=",")
       edgePoints_noisy = np.unique(edgePoints_noisy, axis=0)
@@ -1090,10 +1125,12 @@ if __name__ == "__main__":
             )
             ax[1].scatter(edgePoints[i][:, 0], edgePoints[i][:, 1], s=2)
           if args.debug == "s":
-            plt.savefig(f"images/reconstruction/debug/debug_imgAlignment{i}.png")
+            plt.savefig(
+              f"images/reconstruction/debug/debug_imgAlignment{i}.png"
+            )
           else:
             plt.show()
-          
+
       # check we get correct gray value for the rotated x-rays
       for i in range(0, config["training"]["num_imgs"]):
         img_centre = target_origin + (target_spacing * 500.0) / 2
@@ -1123,7 +1160,6 @@ if __name__ == "__main__":
           plt.savefig(f"images/reconstruction/debug/debug_grayValue{i}.png")
         else:
           plt.show()
-        
 
     # declare posterior shape model class
     assam = RespiratoryReconstructSSAM(
@@ -1166,8 +1202,8 @@ if __name__ == "__main__":
     assam.normaliseTestImageDensity = ssam.sam.normaliseTestImageDensity
 
     print("getting projected landmarks")
-    projLM_file = args.inp+"/projectedMeanLandmarks{}.csv"
-    projLM_ID_file = args.inp+"/projectedMeanLandmarksID{}.csv"
+    projLM_file = args.inp + "/projectedMeanLandmarks{}.csv"
+    projLM_ID_file = args.inp + "/projectedMeanLandmarksID{}.csv"
     t1 = time()
 
     # True if given new mesh to get projection landmarks.
@@ -1235,8 +1271,9 @@ if __name__ == "__main__":
               header="ID",
               fmt="%i",
             )
-            print(config["luna16paths"]["projLM_ID_file"].format(key, proj_ind))
-            print(proj[key][:10])
+            if args.debug:
+              print(config["luna16paths"]["projLM_ID_file"].format(key, proj_ind))
+              print(proj[key][:10])
     else:
       # if no new projLMs are needed, load some from previously created csv files
       assam.projLM = dict.fromkeys(shapes)
@@ -1302,7 +1339,7 @@ if __name__ == "__main__":
         plt.scatter(assam.projLM[key][:, 0], assam.projLM[key][:, 1])
         # plt.scatter(projlm_basenew[key][:,0], projlm_basenew[key][:,1])
         # plt.scatter(projlm_base[key][:,0], projlm_base[key][:,1])
-      
+
       if args.debug == "s":
         plt.savefig("images/reconstruction/debug/debug_checkProjLMs.png")
       else:
@@ -1325,7 +1362,9 @@ if __name__ == "__main__":
               ],
             )
           if args.debug == "s":
-            plt.savefig(f"images/reconstruction/debug/debug_checkProjLMs{proj_ind}.png")
+            plt.savefig(
+              f"images/reconstruction/debug/debug_checkProjLMs{proj_ind}.png"
+            )
           else:
             plt.show()
     # initialise parameters to be optimised - including initial values + bounds
@@ -1405,6 +1444,12 @@ if __name__ == "__main__":
         alpha=0.6,
       )
       plt.savefig(f"images/reconstruction/{tag}-view{i}.png", dpi=200)
+
+    # we do not have landmarks etc so we cannot plot comparisons
+    if test_unseen_image:
+      continue
+    else:
+      target_lm = testLM[t]
 
     # shape parameters for ground truth
     b_gt = getShapeParameters(

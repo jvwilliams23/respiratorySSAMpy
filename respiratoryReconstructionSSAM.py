@@ -205,6 +205,8 @@ class RespiratoryReconstructSSAM:
       self.outline_noisy = kwargs["outline_noisy"]
       self.c_edge_noisy = self.c_edge*kwargs["c_edge_noisy_multiplier"]
       print("c_edge_noisy", self.c_edge_noisy)
+    else:
+      self.outline_noisy_found = False
 
   def rescaleProjection(self, img):
     """
