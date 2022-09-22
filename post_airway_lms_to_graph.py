@@ -242,7 +242,7 @@ lm_index_file = 'allLandmarks/landmarkIndexAirway.txt'
 airway_lm_index = np.loadtxt(lm_index_file).astype(int)
 out_dir = 'outputLandmarks/{filename}{caseID}_{key}.csv'
 
-out_lm = np.loadtxt(out_dir.format(filename=args.filename, caseID=args.caseID, key='ALL'), 
+out_lm = np.loadtxt(args.filename, 
                     delimiter=',', skiprows=1)[airway_lm_index]
 # gt_lm = np.loadtxt(gt_dir.format(args.caseID), 
 #                     delimiter=',', skiprows=1)[airway_lm_index]
@@ -284,7 +284,7 @@ for node in out_landmark_graph.nodes:
   # print(diameter)
 
 if args.out_name_tag != "":
-  args.out_name_tag = "-" + args.out_name_tag
+  args.out_name_tag = "-" + args.out_name_tag + "-"
 
 
 out_graph_w_diameter = getBranchDiameter(out_branch_graph, out_landmark_graph, out_lm)
