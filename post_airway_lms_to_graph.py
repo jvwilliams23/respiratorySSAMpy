@@ -2,11 +2,11 @@
 evaluate airway reconstruction by comparing landmark to landmark distance.
 '''
 
+from copy import copy
 import numpy as np
 import pandas as pd 
 import vedo as v
 import userUtils as utils
-from userUtils import GradientCurvature
 import matplotlib.pyplot as plt
 from glob import glob
 import argparse
@@ -178,25 +178,6 @@ def graph_to_spline(graph, nodes, npoints=20):
   spline_path = interpolate.splev(np.linspace(0,1,npoints), spl_xticks, der=0)
   spline_path = np.vstack(spline_path).T
   return spline_path
-
-def spline_curvature(points):
-  """
-  Get curvature at each point along a curve
-
-  Parameters
-  ----------
-  points (np.ndarray, N,2): x-y points in space of a 2D curve
-
-  Returns
-  -------
-  curv_abs (np.array, N): curvature in 1/mm at each point on curve. 
-    take absolute value to ignore sign
-  """
-  points = list(zip(points[:,0], points[:,1]))
-  curv = GradientCurvature(trace=points)
-  curv.calculate_curvature()
-  curv_abs = abs(curv.curvature)
-  return curv_abs
 
 def rotation_matrix_between_two_vectors(U,V):
   """ Find the rotation matrix that aligns vec1 to vec2
