@@ -35,7 +35,7 @@ import userUtils as utils
 from ssm import SSM as RespiratorySSM 
 """
 from morphAirwayTemplateMesh import MorphAirwayTemplateMesh
-from morphTemplateMesh import MorphTemplateMesh as MorphLobarTemplateMesh
+from morphLungTemplateMesh import MorphLungTemplateMesh as MorphLobarTemplateMesh
 from respiratoryReconstructionSSAM import RespiratoryReconstructSSAM
 
 # from reconstructSSAM import LobarPSM
