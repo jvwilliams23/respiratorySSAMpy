@@ -285,7 +285,7 @@ def assignNewPositionsToTemplateGraph(template_graph, landmarks):
 skel_ids = np.loadtxt('allLandmarks/landmarkIndexSkeleton.txt').astype(int)
 diameter_ids = ~np.isin(np.arange(0, len(gt_lm)), skel_ids)
 
-num_diameter_pts = 14 # hard code 14 points representing diameter of airways
+num_diameter_pts = 10 # hard code 14 points representing diameter of airways
 
 
 # get graph of all skeleton landmarks and graph of only branch/end point landmarks
@@ -305,7 +305,7 @@ diameter_pts = gt_lm[diameter_ids][:num_diameter_pts]
 diameter = []
 for node in gt_landmark_graph.nodes:
   npID = gt_landmark_graph.nodes[node]['npID']
-  gt_diameter_pts = gt_lm[npID+1:npID+1+num_diameter_pts]
+  gt_diameter_pts = gt_lm[npID+1:npID+num_diameter_pts]
   circumference = 0
   for i, pt in enumerate(gt_diameter_pts[1:]):
     # print(utils.euclideanDist(pt, diameter_pts[i]))
@@ -315,7 +315,7 @@ for node in gt_landmark_graph.nodes:
 
   # vp+=v.Points(gt_diameter_pts, r=3).c(cols[np.random.randint(len(cols))])
 
-  out_diameter_pts = out_lm[npID+1:npID+1+num_diameter_pts]
+  out_diameter_pts = out_lm[npID+1:npID+num_diameter_pts]
   circumference = 0
   for i, pt in enumerate(out_diameter_pts[1:]):
     circumference += utils.euclideanDist(pt, out_diameter_pts[i])
