@@ -113,29 +113,30 @@ def getBranchDiameter(lgraph, vgraph, landmarks, nTot=10, debug=False):
   lgraph0 = lgraph.copy()
   root = list(nx.topological_sort(lgraph0))[0]
   for edge in lgraph0.edges:
-    # if edge1 is above edge 0 (in hierarchy), then edge1 is proximal one 
-    if edge[1] in nx.ancestors(vgraph, edge[0]):
-      proximalNode, distalNode = edge[::-1]
-    else:
-      proximalNode, distalNode = edge
+    proximalNode, distalNode = edge
+    if proximalNode == root:
+      lgraph0.nodes[proximalNode]["diameter"] = vgraph.nodes[proximalNode]["diameter"]
+      lgraph0.nodes[proximalNode]["generation"] = 0
+    lgraph0.nodes[distalNode]["diameter"] = vgraph.nodes[distalNode]["diameter"]
     # get nodes in voxel graph along path between landmarks
     e_path = list(nx.all_simple_paths(vgraph, proximalNode, distalNode) )[0]
     chunks = np.linspace(0, len(e_path)-1, nTot) # chunk size to split tree segment
     inter_pts_diameter = []
     dist = 0
     for i, c in enumerate(chunks):
-      if i <= 1 or i == len(chunks)-2:
-        continue
       # if using a graph nodes, find the closest nth node and get its position
       ind = e_path[int(round(c))]
       inter_pts_diameter.append(vgraph.nodes[ind]['diameter'])
-    lgraph0.edges[edge]['diameter'] = np.mean(inter_pts_diameter)
-    if debug:
-      pass
-      # print("mean diameter is", np.mean(inter_pts_diameter))
+      if args.debug:
+        print(vgraph.nodes[ind]['diameter'])
+    if args.debug:
+      print(f"edge {edge} mean {np.median(inter_pts_diameter)}")
+    lgraph0.edges[edge]['diameter'] = np.median(inter_pts_diameter)
+    lgraph0.nodes[distalNode]["diameter"] = np.median(inter_pts_diameter)
     lgraph0.edges[edge]['generation'] = nx.shortest_path_length(lgraph0, 
                                                                 root,
                                                                 proximalNode)
+    lgraph0.nodes[distalNode]["generation"] = copy(lgraph0.edges[edge]['generation'])
   return lgraph0
 
 def getBranchAngle(graph):
@@ -233,6 +234,13 @@ def lateral_dist_from_axis(curve):
   lateral_dist = utils.euclideanDist(new_curve, np.zeros(2))
   return lateral_dist.max() 
 
+def clean_template_graph(template_graph):
+  for node_i in template_graph.nodes:
+    template_graph.nodes[node_i].pop("diameter")
+    template_graph.nodes[node_i].pop("pos")
+    template_graph.nodes[node_i].pop("norm")
+  return template_graph
+
 def assignNewPositionsToTemplateGraph(template_graph, landmarks):
   graph_out = template_graph.copy()
   for node in template_graph:
@@ -274,6 +282,9 @@ num_diameter_pts = 10 # hard code 14 points representing diameter of airways
 template_graph = nx.read_gpickle('skelGraphs/nxGraphLandmarkMean.pickle')
 template_bgraph = nx.read_gpickle('skelGraphs/nxGraphLandmarkMeanBranchesOnly.pickle') 
 out_skel_pts = out_lm[skel_ids]
+template_graph = clean_template_graph(template_graph)
+template_bgraph = clean_template_graph(template_bgraph)
+
 out_landmark_graph = assignNewPositionsToTemplateGraph(template_graph, out_lm)
 out_branch_graph = assignNewPositionsToTemplateGraph(template_bgraph, out_lm)
 
