@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os 
 from os import path
+from distutils.util import strtobool
 from glob import glob  
 from sys import exit
 import argparse
@@ -37,8 +38,8 @@ def getArgs():
                       help='file name for in same directory as input file'
                       )
   parser.add_argument('--debug', '-d',
-                      default=False, 
-                      type=str, 
+                      default="False", 
+                      type=strtobool, 
                       help='debug mode prints checks and shows image checks'
                       )
 
@@ -126,7 +127,8 @@ if __name__ == "__main__":
   args = getArgs()
   coarsener = 4
   patientID = os.path.basename(os.path.dirname(args.inputFile))
-  spacingFile = args.inputFile.replace(".png", ".md")
+  # spacingFile = args.inputFile.replace(".png", ".md")
+  spacingFile = glob(os.path.dirname(args.inputFile)+'/drr-spacing*.md')[0]
   spacing =  np.loadtxt(spacingFile, skiprows=1)
 
   #-load x-ray and pre-process --------------INSERT AIRWAY ENHANCE HERE
@@ -139,7 +141,7 @@ if __name__ == "__main__":
     img_filt = img_filt/img_filt.max()
 
   #-get image with outlines 
-  out = getOutline(img_filt)
+  out = getOutline(img_filt, sigma=2)
   #-write comparison figure for checking quality of edge map
   # compareOutline(img_filt, out, compareDir, compNameOut)
 
@@ -157,6 +159,7 @@ if __name__ == "__main__":
           -img.shape[0]/2.*spacing[2]*coarsener,  
           img.shape[0]/2.*spacing[2]*coarsener ]
 
+  # when debugging, show the output. Otherwise, write the data to txt file
   if args.debug:
     plt.close()
     plt.imshow(img, cmap=plt.cm.bone, extent=extent)
@@ -165,10 +168,11 @@ if __name__ == "__main__":
       plt.savefig('outline_compare/'+args.inputFile.split('/')[-1])
     else:
       plt.show()
-  #-write coordinates
-  out_dir = path.dirname(args.inputFile)
-  out_name = path.join(out_dir, args.outlineFileName)
-  # imDir = "DRRs_edgeMapWorkdir/luna16/{}/".format(patientID)
-  # np.savetxt(compareDir+outlineCompareNameOut, coords, delimiter=",")
-  np.savetxt(out_name, coords, delimiter=",")
-  # exit()
+  else:
+    #-write coordinates
+    out_dir = path.dirname(args.inputFile)
+    out_name = path.join(out_dir, args.outlineFileName)
+    # imDir = "DRRs_edgeMapWorkdir/luna16/{}/".format(patientID)
+    # np.savetxt(compareDir+outlineCompareNameOut, coords, delimiter=",")
+    np.savetxt(out_name, coords, delimiter=",")
+    # exit()

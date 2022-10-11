@@ -4,7 +4,6 @@ evaluate airway reconstruction by comparing landmark to landmark distance.
 
 from copy import copy
 import numpy as np
-import pandas as pd 
 import vedo as v
 import userUtils as utils
 import matplotlib.pyplot as plt
@@ -24,6 +23,11 @@ parser.add_argument('--caseID', '-c',
                     type=str,#, required=True,
                     help='training data case'
                     )
+parser.add_argument('--write_dir', '-wd',
+                    default='outputGraphs/',
+                    type=str,
+                    help='training data case'
+                    )
 parser.add_argument('--filename', '-f',
                     default='reconstruction_case', 
                     type=str,#, required=True,
@@ -35,14 +39,19 @@ parser.add_argument('--out_name_tag', '-ot',
                     help='string to append to output graph file name'
                     )
 parser.add_argument('--visualise', '-v',
-                    default=str(False), 
-                    type=strtobool,#, required=True,
+                    default=False,
+                    action="store_true",
                     help='visualise error'
                     )
 parser.add_argument('--write', '-w',
                     default=str(True), 
                     type=strtobool,#, required=True,
                     help='write errors to text files'
+                    )
+parser.add_argument('--debug', '-d',
+                    default=False,
+                    action="store_true",
+                    help='debug checks on'
                     )
 args = parser.parse_args()
 
@@ -238,7 +247,7 @@ def graphToCoords(graph):
   return coords
 
 
-lm_index_file = 'allLandmarks/landmarkIndexAirway.txt'
+lm_index_file = 'allLandmarks_noFissures/landmarkIndexAirway.txt'
 airway_lm_index = np.loadtxt(lm_index_file).astype(int)
 out_dir = 'outputLandmarks/{filename}{caseID}_{key}.csv'
 
@@ -281,18 +290,36 @@ for node in out_landmark_graph.nodes:
     circumference += utils.euclideanDist(pt, out_diameter_pts[i])
   diameter = circumference/np.pi
   out_landmark_graph.nodes[node]['diameter'] = copy(diameter)
-  # print(diameter)
 
 if args.out_name_tag != "":
   args.out_name_tag = "-" + args.out_name_tag + "-"
 
 
 out_graph_w_diameter = getBranchDiameter(out_branch_graph, out_landmark_graph, out_lm)
-# exit()
+
 out_graph_w_lengths = getBranchLength(out_branch_graph, out_landmark_graph, out_lm)
-out_bgraph = getBranchDiameter(out_branch_graph, out_landmark_graph, out_lm, debug=True)
+out_bgraph = getBranchDiameter(out_branch_graph, out_landmark_graph, out_lm)
 out_bgraph = getBranchLength(out_bgraph, out_landmark_graph, out_lm)
-nx.write_gpickle(out_bgraph, f"outputGraphs/nxGraph{args.caseID}{args.out_name_tag}BranchGraph.pickle")
+nx.write_gpickle(out_bgraph, f"{args.write_dir}/nxGraph{args.caseID}{args.out_name_tag}BranchGraph.pickle")
 out_lmgraph = getBranchDiameter(out_landmark_graph, out_landmark_graph, out_lm)
 out_lmgraph = getBranchLength(out_lmgraph, out_landmark_graph, out_lm)
-nx.write_gpickle(out_lmgraph, f"outputGraphs/nxGraph{args.caseID}{args.out_name_tag}VoxelGraph.pickle")
+nx.write_gpickle(out_lmgraph, f"{args.write_dir}/nxGraph{args.caseID}{args.out_name_tag}VoxelGraph.pickle")
+print(f"writing {args.write_dir}/nxGraph{args.caseID}{args.out_name_tag}BranchGraph.pickle")
+
+
+print("ALL DIA CHECK")
+for node_i in out_bgraph:
+  print(out_bgraph.nodes[node_i]["generation"], out_bgraph.nodes[node_i]["diameter"])
+
+if args.debug:
+  vp = v.Plotter()
+  vp += v.Points(out_lm, c="black", r=5)
+  diameter = []
+  test_graph = out_bgraph.copy()
+  for node in test_graph.nodes:
+    pos = test_graph.nodes[node]['pos']
+    dia = test_graph.nodes[node]['diameter']
+    vp += v.Cylinder(pos, r=dia/2)
+  vp.show()
+
+
