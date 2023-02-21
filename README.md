@@ -10,3 +10,10 @@ conda create --name ssam_env python=3.10
 conda activate ssam_env
 pip install hjson matplotlib networkx nevergrad numpy pyssam scikit-image scikit-learn scipy vedo
 ```
+Download the data (**ADD LINK**)
+
+### Running the reconstruction script
+
+```bash
+python reconstructResp_nofissures.py -c config_nofissures_gaussblur_2proj.json
+```
