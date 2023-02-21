@@ -8,12 +8,10 @@ from os import path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pyssam
 import vedo as v
-import userUtils as utils
-# from respiratorySAM import RespiratorySAM
-# from respiratorySSM import RespiratorySSM
-import pyssam 
 
+import userUtils as utils
 
 
 class RespiratorySSAM(pyssam.StatisticalModelBase):

@@ -21,9 +21,7 @@ from skimage import draw
 from sklearn.preprocessing import MinMaxScaler
 
 import userUtils as utils
-
 from respiratorySSAM import RespiratorySSAM
-# import pyssam
 
 
 class RespiratoryReconstructSSAM(RespiratorySSAM):

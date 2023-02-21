@@ -1,15 +1,15 @@
 """
-    run script for reconstructing airways amd lobes from an X-ray
+run script for reconstructing airways and lobes from an X-ray
 
-    if no input is given, default will create random test set of size = 1
+if no input is given, default will create random test set of size = 1
 """
 
 import argparse
 import re
-from os import makedirs
 from copy import copy
 from distutils.util import strtobool
 from glob import glob
+from os import makedirs
 from sys import exit
 from time import time
 
@@ -21,13 +21,9 @@ import pyssam
 import vedo as v
 
 import userUtils as utils
-# from morphAirwayTemplateMesh import MorphAirwayTemplateMesh
-# from morphLungTemplateMesh import MorphLungTemplateMesh as MorphLobarTemplateMesh
 from respiratoryReconstructionSSAM import RespiratoryReconstructSSAM
-
-# from respiratorySAM import RespiratorySAM
 from respiratorySSAM import RespiratorySSAM
-# from respiratorySSM import RespiratorySSM
+
 
 def get_inputs():
   parser = argparse.ArgumentParser(description=__doc__)
