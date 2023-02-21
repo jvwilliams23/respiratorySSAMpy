@@ -814,7 +814,7 @@ if __name__ == "__main__":
       len(glob(mean_shape_file)) > 0
     ), f"file {mean_shape_file} does not exist!"
 
-    mean_mesh[key] = v.load(mean_shape_file).computeNormals()
+    mean_mesh[key] = v.load(mean_shape_file).compute_normals()
 
   # reorder unstructured stl file to be coherent w/ model and landmarks
   # extract mesh data (coords, normals and faces)
@@ -830,7 +830,7 @@ if __name__ == "__main__":
       mesh = mean_mesh[key].clone().decimate(fraction=0.1).clean()
     if not args.quiet:
       print("decimated num cells", len(mesh.faces()))
-    mesh_45 = mesh.clone().rotateZ(45)
+    mesh_45 = mesh.clone().rotate_z(45)
     meanNorms_face_rot45[key] = mesh_45.normals(cells=True)
     # load mesh data and create silhouette
     surfCoords = mesh.points()
