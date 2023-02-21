@@ -44,7 +44,7 @@ def get_inputs():
     "--case",
     "-c",
     default="none",  #'3948',
-    type=str,  # , required=True,
+    type=str,
     help="training data case",
   )
   parser.add_argument(
@@ -388,53 +388,6 @@ def newProjLMs(
 
   return projLM, projLM_ID
 
-
-def getMeanGraph(
-  caseIDs,
-  landmarks,
-  mean_landmarks,
-  graph_dir_base,
-):
-  """
-  Output networkx graph with mean position and additional metadata on
-  how each graph node matches landmark location in numpy array
-
-  Inputs:
-  caseIDs (list, str)  ordered list of IDs for each training case.
-  landmarks (np.ndarray, N_train, N_lms, 3): all landmarks for all patients
-  mean_landmarks (np.ndarray, N_lms, 3): landmarks averaged over all patients
-  graph_files (str): string used to search for landmarked graphs by caseID
-
-  returns:
-  lgraphMean (nx.DiGraph): directed graph with mean landmark position at each node
-  """
-  lgraphList = [nx.read_gpickle(graph_dir_base.replace("*", cID)) for cID in caseIDs]
-  posList = []
-  for i, lgraph in enumerate(lgraphList):
-    pos = []
-    for node in lgraph.nodes:
-      pos.append(lgraph.nodes[node]["pos"])
-    pos = np.vstack(pos)
-    posList.append(pos)
-  lgraphMean = lgraphList[-1].copy()
-  lgraph = lgraphList[-1].copy()
-  for node in lgraph.nodes:
-    pos = lgraph.nodes[node]["pos"]
-    dist = utils.euclideanDist(landmarks[i], pos)
-    currentLM = np.argmin(dist)
-    # find closest graph node, if it is not a landmark then find next closest
-    isin = np.isclose(posList[i], landmarks[i][currentLM]).all(axis=1)
-    while isin.sum() == 0:
-      dist[currentLM] = 100000000
-      currentLM = np.argmin(dist)
-      isin = np.isclose(posList[i], landmarks[i][currentLM]).all(axis=1)
-    # assign metadata to graphs
-    lgraph.nodes[node]["npID"] = currentLM
-    lgraphMean.nodes[node]["pos"] = mean_landmarks[currentLM]
-    lgraphMean.nodes[node]["npID"] = currentLM
-  return lgraphMean
-
-
 def filesFromRegex(path):
   """
   Given an input template path as BASEDIR/..../file-in-dir-.....ext
@@ -508,7 +461,7 @@ if __name__ == "__main__":
   img = None
   spacing_xr = None
 
-  print("\tReading data")
+  print("Reading data")
   with open(args.config) as f:
     config = hjson.load(f)
   # read DRR data
@@ -594,17 +547,6 @@ if __name__ == "__main__":
       lmOrder["LUNGS"].extend(list(lmOrder[shape]))
   lmOrder["LUNGS"] = np.array(lmOrder["LUNGS"])
 
-  lgraph = getMeanGraph(
-    patientIDs, 
-    landmarks, 
-    landmarks.mean(axis=0), 
-    graph_dir_base=config["luna16paths"]["landmark_graphs"]
-  )
-  nx.write_gpickle(lgraph, "skelGraphs/nxGraphLandmarkMean.pickle")
-  lgraph_branches = utils.simplifyGraph(lgraph)
-  nx.write_gpickle(
-    lgraph_branches, "skelGraphs/nxGraphLandmarkMeanBranchesOnly.pickle"
-  )
   # read appearance modelling data
   origin = np.vstack([np.loadtxt(o, skiprows=1)] for o in originDirs)
   spacing = np.vstack(
@@ -1115,9 +1057,8 @@ if __name__ == "__main__":
       assam.loss_function, initPose, bounds, epochs=args.epochs, threads=1
     )
     print(
-      "\n\n\n\n\n\t\t\tTime taken is {0} ({1} mins)".format(
-        time() - startTime, round((time() - startTime) / 60.0), 3
-      )
+      f"Time taken is {time() - startTime} "
+      f"({round((time() - startTime) / 60.0)} mins)"
     )
 
     # get final shape
