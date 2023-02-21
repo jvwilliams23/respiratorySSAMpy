@@ -1,0 +1,44 @@
+{
+  // configuration for CNN training
+  // file must be read with hjson 'pip install hjson', or remove comments
+  "luna16paths" :
+  {
+    //  training data images
+    "drrs" : "dataset/DRRs/luna16/..../drr-....-frontal.png",
+    // "drrs" : "DRRs/luna16/..../drr-....-contrast2000.png",
+    "drrs_left" : "dataset/DRRs/luna16/..../drr-....-lateral-left.png",
+    "drrs_right" : "dataset/DRRs/luna16/..../drr-....-lateral-right.png",
+    "drrs_-45" : "dataset/DRRs/luna16/..../drr-....-angle--45.png",
+    "spacing" : "dataset/DRRs/luna16/..../drr-drr-spacing-.....md",
+    "origins" : "dataset/DRRs/luna16/origins/drr-origins-.....md",
+    // training data labelmaps
+    "landmarks" : "dataset/allLandmarks_noFissures/allLandmarks.....csv",
+    "landmarks_index_dir" : "dataset/allLandmarks_noFissures/",
+    "bifurcation_landmarks" : "dataset/landmarks/manual-jw/landmarks.....csv",
+    "landmark_graphs" : "dataset/landmarks/manual-jw-diameterFromSurface/nxGraph*landmarks.pickle",
+    "projLM_ID_file" : "dataset/allLandmarks_noFissures/projectedMeanLandmarksID{}_multiproj{}.csv",
+    "projLM_ID_dir" : "dataset/allLandmarks_noFissures/",
+    "template_dir": "dataset/templates/coarserTemplates_noFissures/"
+  },
+  "training":
+  {
+    "img_keys" : ["drrs", "drrs_left"],
+    "img_axes" : [[0,2],[1,2]],
+    "num_imgs" : 2,
+    "rotation" : [0,0],
+    // string to describe + differentiate from images 
+    //    here we use the direction taken from
+    "img_names": ["frontal", "left"],
+    "shapes_to_skip_fit": [["Airway", "RML"],
+                            ["Airway", "RUL", "RML", "RLL"] 
+                          ],
+  },
+  "test-set":
+  {
+    // outline dirs
+    "outlines" : ["dataset/DRRs/luna16/{}/drr-outline-{}-gaussianblur.csv",
+                  "dataset/DRRs/luna16/{}/drr-outline-{}-lateral-left.csv",
+                ],
+  }
+}
+
