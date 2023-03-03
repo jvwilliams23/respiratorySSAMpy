@@ -6,6 +6,8 @@ This project aimed to use a statistical shape and appearance model (SSAM) to aut
 
 We use a point cloud of landmarks with digitally reconstructed radiographs (DRR) to create a SSAM that describes the shape and appearance correlation across a population. The SSAM parameters are then iteratively adapted to create a new shape which matches a new (unseen) X-ray image. The fit of the generated shape is evaluated with regards to the outline of the lung edge-map, the fit of the modelled appearance to the X-ray's appearance and other metrics.
 
+**DATA TO BE MADE AVAILABLE SOON**
+
 ## Usage
 
 ### Installation
