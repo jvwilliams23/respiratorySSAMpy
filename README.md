@@ -1,5 +1,7 @@
 # respiratorySSAMpy
 
+[![DOI](https://zenodo.org/badge/362392583.svg)](https://zenodo.org/badge/latestdoi/362392583)
+
 ## Overview
 
 This project aimed to use a statistical shape and appearance model (SSAM) to automatically generate 3D airway and lung shapes from a single 2D chest X-ray image. 
