@@ -1,15 +1,15 @@
 """
-run script for reconstructing airways and lobes from an X-ray
+    run script for reconstructing airways amd lobes from an X-ray
 
-if no input is given, default will create random test set of size = 1
+    if no input is given, default will create random test set of size = 1
 """
 
 import argparse
 import re
+from os import makedirs
 from copy import copy
 from distutils.util import strtobool
 from glob import glob
-from os import makedirs
 from sys import exit
 from time import time
 
@@ -17,13 +17,16 @@ import hjson
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
-import pyssam
 import vedo as v
 
 import userUtils as utils
+# from morphAirwayTemplateMesh import MorphAirwayTemplateMesh
+# from morphLungTemplateMesh import MorphLungTemplateMesh as MorphLobarTemplateMesh
 from respiratoryReconstructionSSAM import RespiratoryReconstructSSAM
-from respiratorySSAM import RespiratorySSAM
 
+# from respiratorySAM import RespiratorySAM
+from respiratorySSAM import RespiratorySSAM
+# from respiratorySSM import RespiratorySSM
 
 def get_inputs():
   parser = argparse.ArgumentParser(description=__doc__)
@@ -44,7 +47,7 @@ def get_inputs():
     "--case",
     "-c",
     default="none",  #'3948',
-    type=str,
+    type=str,  # , required=True,
     help="training data case",
   )
   parser.add_argument(
@@ -64,17 +67,17 @@ def get_inputs():
   parser.add_argument(
     "--c_prior",
     "-cp",
-    default=0.00044164808307051954,
+    default=0.025,
     type=float,
     help="prior shape loss coefficient",
   )
   parser.add_argument(
-    "--c_dense", "-cd", default=0.6869566761589552817, type=float, help="density loss coefficient"
+    "--c_dense", "-cd", default=1.0, type=float, help="density loss coefficient"
   )
   parser.add_argument(
     "--c_edge",
     "-ce",
-    default=0.7945582031917642896,
+    default=0.01,
     type=float,
     help="edge map loss coefficient",
   )
@@ -293,10 +296,10 @@ def getShapeParameters(
   returns:
   shape_parameters (np.array N_train): vector with parameters describing the shape
   """
-  input_landmarks_vec = input_landmarks.copy().reshape(-1)
+  input_landmarks_vec = input_landmarks.reshape(-1)
   input_landmarks_vec -= input_landmarks_vec.mean()
   input_landmarks_vec /= input_landmarks_vec.std()
-  average_landmarks_vec = average_landmarks.copy().reshape(-1)
+  average_landmarks_vec = average_landmarks.reshape(-1)
   average_landmarks_vec -= average_landmarks_vec.mean()
   average_landmarks_vec /= average_landmarks_vec.std()
 
@@ -388,6 +391,53 @@ def newProjLMs(
 
   return projLM, projLM_ID
 
+
+def getMeanGraph(
+  caseIDs,
+  landmarks,
+  mean_landmarks,
+  graph_dir_base,
+):
+  """
+  Output networkx graph with mean position and additional metadata on
+  how each graph node matches landmark location in numpy array
+
+  Inputs:
+  caseIDs (list, str)  ordered list of IDs for each training case.
+  landmarks (np.ndarray, N_train, N_lms, 3): all landmarks for all patients
+  mean_landmarks (np.ndarray, N_lms, 3): landmarks averaged over all patients
+  graph_files (str): string used to search for landmarked graphs by caseID
+
+  returns:
+  lgraphMean (nx.DiGraph): directed graph with mean landmark position at each node
+  """
+  lgraphList = [nx.read_gpickle(graph_dir_base.replace("*", cID)) for cID in caseIDs]
+  posList = []
+  for i, lgraph in enumerate(lgraphList):
+    pos = []
+    for node in lgraph.nodes:
+      pos.append(lgraph.nodes[node]["pos"])
+    pos = np.vstack(pos)
+    posList.append(pos)
+  lgraphMean = lgraphList[-1].copy()
+  lgraph = lgraphList[-1].copy()
+  for node in lgraph.nodes:
+    pos = lgraph.nodes[node]["pos"]
+    dist = utils.euclideanDist(landmarks[i], pos)
+    currentLM = np.argmin(dist)
+    # find closest graph node, if it is not a landmark then find next closest
+    isin = np.isclose(posList[i], landmarks[i][currentLM]).all(axis=1)
+    while isin.sum() == 0:
+      dist[currentLM] = 100000000
+      currentLM = np.argmin(dist)
+      isin = np.isclose(posList[i], landmarks[i][currentLM]).all(axis=1)
+    # assign metadata to graphs
+    lgraph.nodes[node]["npID"] = currentLM
+    lgraphMean.nodes[node]["pos"] = mean_landmarks[currentLM]
+    lgraphMean.nodes[node]["npID"] = currentLM
+  return lgraphMean
+
+
 def filesFromRegex(path):
   """
   Given an input template path as BASEDIR/..../file-in-dir-.....ext
@@ -461,7 +511,7 @@ if __name__ == "__main__":
   img = None
   spacing_xr = None
 
-  print("Reading data")
+  print("\tReading data")
   with open(args.config) as f:
     config = hjson.load(f)
   # read DRR data
@@ -470,7 +520,7 @@ if __name__ == "__main__":
   imDirs = filesFromRegex(config["luna16paths"]["drrs"])
   imDirs_left = filesFromRegex(config["luna16paths"]["drrs_left"])
   imDirs_right = filesFromRegex(config["luna16paths"]["drrs_right"])
-  imDirs_45 = filesFromRegex(config["luna16paths"]["drrs_-45"])
+  # imDirs_45 = filesFromRegex(config["luna16paths"]["drrs_-45"])
   patientIDs = matchesFromRegex(config["luna16paths"]["origins"])
 
   # read landmark data
@@ -486,7 +536,7 @@ if __name__ == "__main__":
     == len(originDirs)
     == len(imDirs_left)
     == len(imDirs_right)
-    == len(imDirs_45)
+    # == len(imDirs_45)
   ), (
     "Error reading image data. "
     f"Num spacing dirs = {len(spacingDirs)}. "
@@ -494,7 +544,7 @@ if __name__ == "__main__":
     f"Num originDirs dirs = {len(originDirs)}. "
     f"Num imDirs_left dirs = {len(imDirs_left)}. "
     f"Num imDirs_right dirs = {len(imDirs_right)}. "
-    f"Num imDirs_45 dirs = {len(imDirs_45)}. "
+    # f"Num imDirs_45 dirs = {len(imDirs_45)}. "
   )
 
   if (
@@ -521,7 +571,7 @@ if __name__ == "__main__":
     imDirs.pop(dId)
     imDirs_left.pop(dId)
     imDirs_right.pop(dId)
-    imDirs_45.pop(dId)
+    # imDirs_45.pop(dId)
     patientIDs.pop(dId)
 
   landmarks = np.array(
@@ -547,10 +597,21 @@ if __name__ == "__main__":
       lmOrder["LUNGS"].extend(list(lmOrder[shape]))
   lmOrder["LUNGS"] = np.array(lmOrder["LUNGS"])
 
+  lgraph = getMeanGraph(
+    patientIDs, 
+    landmarks, 
+    landmarks.mean(axis=0), 
+    graph_dir_base=config["luna16paths"]["landmark_graphs"]
+  )
+  nx.write_gpickle(lgraph, "skelGraphs/nxGraphLandmarkMean.pickle")
+  lgraph_branches = utils.simplifyGraph(lgraph)
+  nx.write_gpickle(
+    lgraph_branches, "skelGraphs/nxGraphLandmarkMeanBranchesOnly.pickle"
+  )
   # read appearance modelling data
-  origin = np.vstack([np.loadtxt(o, skiprows=1)] for o in originDirs)
+  origin = np.vstack([np.loadtxt(o, skiprows=1) for o in originDirs])
   spacing = np.vstack(
-    [np.loadtxt(o, skiprows=1)] for o in spacingDirs
+    [np.loadtxt(o, skiprows=1) for o in spacingDirs]
   )
   # crop last two rows of pixels off XR so white pixels don't interfere with normalising
   drrArr = np.rollaxis(
@@ -609,10 +670,14 @@ if __name__ == "__main__":
   if test_unseen_image:
     # get data for unseen test image
     testID = ["unseen"+args.case]
+    import warnings
+    warnings.warn("Need to tidy up following code")
     test_img_files = [
       config["test-set"]["unseen_image"]["img_front"],
-      config["test-set"]["unseen_image"]["img_left"],
     ]
+    if config["training"]["num_imgs"] == 2:
+      test_img_files.append(config["test-set"]["unseen_image"]["img_left"])
+
     testIm = [np.rollaxis(
           np.dstack(
             [
@@ -622,7 +687,7 @@ if __name__ == "__main__":
           ),
           2,
           0,
-        )]
+        ).squeeze()]
     testOrigin = [np.loadtxt(
           config["test-set"]["unseen_image"]["origin"], skiprows=1
         )]
@@ -692,32 +757,33 @@ if __name__ == "__main__":
 
   meanArr = landmarks.mean(axis=0)
 
-  # create shape and appearance model instance, based on pyssam base class
+  # create appearance model instance and load data
   ssam = RespiratorySSAM(
     landmarks,
     landmarks_in_ct_space,
     drrArr,
     origin,
     spacing,
+    train_size=landmarks.shape[0],
     rotation=config["training"]["rotation"],
     img_coords_axes=config["training"]["img_axes"],
   )
+  print(testIm[0].shape)
   if testIm[0].ndim == 3:
     # if multiple images for reconstruction, get density for each one
     # which is last N columns from xg_train
-    density = ssam.shape_appearance[:, :, -testIm[0].shape[0] :]
+    density = ssam.xg_train[:, :, -testIm[0].shape[0] :]
     number_of_features = 3 + testIm[0].shape[0]  # 3 = num coordinates
   else:
-    density = ssam.shape_appearance[:, :, -1].reshape(len(landmarks), -1, 1)
+    density = ssam.xg_train[:, :, -1].reshape(len(landmarks), -1, 1)
     number_of_features = 4  # three coordinates, and a density value
-  ssam.create_pca_model(ssam.shape_appearance_columns)
-  model = ssam.pca_model_components
 
+  model = ssam.phi_sg
   meanArr = np.mean(landmarks, axis=0)
 
   # set number of modes
   numModes = np.where(
-    np.cumsum(ssam.pca_object.explained_variance_ratio_) > args.described_variance
+    np.cumsum(ssam.pca_sg.explained_variance_ratio_) > args.described_variance
   )[0][0]
   if not args.quiet:
     print("modes used is", numModes)
@@ -804,14 +870,11 @@ if __name__ == "__main__":
     img = target_img.copy()
 
     # index 0 as output is stacked
-    appearance_xr_helper = pyssam.utils.AppearanceFromXray(img, np.zeros(3), target_spacing)
-    imgCoords = appearance_xr_helper.pixel_coordinates[0]
-    get_density = appearance_xr_helper.compute_landmark_density
-    assert appearance_xr_helper.pixel_coordinates.shape[0] == 1, f"unexpected shape for pixel_coordinates {imgCoords.shape}"
+    imgCoords = ssam.sam.drrArrToRealWorld(img, np.zeros(3), target_spacing)[0]
     spacing_xr = target_spacing.copy()
     # center image coords, so in the same coord system as edges
     imgCoords -= np.mean(imgCoords, axis=0)
-    
+
     # edge points in units of pixels from edge map
     edgePoints = [None] * len(config["test-set"]["outlines"])
     for f, _ in enumerate(config["test-set"]["outlines"]):
@@ -834,6 +897,13 @@ if __name__ == "__main__":
     # if only 1 x-ray given, change shape from list of 2D arrays to one 2D array
     if len(edgePoints) == 1:
       edgePoints = edgePoints[f]
+    if "outline_contrast" in config["test-set"]:
+      print("Reading contrast outline")
+      edgePoints_contrast = np.loadtxt(
+        config["test-set"]["outline_contrast"][0].format(target_id, target_id),
+        delimiter=",",
+      )
+      optimiser_kwargs["outline_contrast"] = edgePoints_contrast
     if config["training"]["num_imgs"] >= 2:
       optimiser_kwargs["bounds_index_pose"] = [0, 1, 2]
       optimiser_kwargs["bounds_index_scale"] = 3
@@ -846,7 +916,6 @@ if __name__ == "__main__":
 
     # declare posterior shape model class
     assam = RespiratoryReconstructSSAM(
-      ssam_obj=ssam,
       shape=inputCoords,
       xRay=edgePoints,
       lmOrder=lmOrder,
@@ -854,6 +923,7 @@ if __name__ == "__main__":
       transform=carinaArr[t] * 0.0,
       img=copy(img),
       imgCoords=imgCoords,
+      imgCoords_all=ssam.sam.imgCoords_all,
       imgCoords_axes=config["training"]["img_axes"],
       density=density,
       model=modelDict,
@@ -875,8 +945,13 @@ if __name__ == "__main__":
     )
 
     assam.spacing_xr = spacing_xr
+    # import variables to class
+    assam.variance = ssam.variance[:numModes]
+    assam.std = ssam.std[:numModes]
     # import functions to PSM class
-    assam.get_density = get_density
+    assam.getg_allModes = ssam.sam.getg_allModes
+    assam.getDensity = ssam.sam.getDensity
+    assam.normaliseTestImageDensity = ssam.sam.normaliseTestImageDensity
 
     print("getting projected landmarks")
     projLM_file = config["luna16paths"]["projLM_ID_dir"] + "/projectedMeanLandmarks{}.csv"
@@ -994,17 +1069,17 @@ if __name__ == "__main__":
     assam.fissureLM_ID = 0
     t1 = time()
 
-    # assam.projLM_IDAll = []
-    # pointCounter = 0
-    # for key in assam.projLM_ID.keys():
-    #   if key not in ["Airway", "RML"]:
-    #     assam.projLM_IDAll.extend(
-    #       list(np.array(assam.projLM_ID[key]) + pointCounter)
-    #     )
-    #     # tmp_id = np.arange(0, inputCoords[key].shape[0], 1)
-    #     # assam.projLM_IDAll.extend(tmp_id+pointCounter)
-    #   pointCounter += inputCoords[key].shape[0]
-    # assam.projLM_IDAll = np.array(assam.projLM_IDAll)
+    assam.projLM_IDAll = []
+    pointCounter = 0
+    for key in assam.projLM_ID.keys():
+      if key not in ["Airway", "RML"]:
+        assam.projLM_IDAll.extend(
+          list(np.array(assam.projLM_ID[key]) + pointCounter)
+        )
+        # tmp_id = np.arange(0, inputCoords[key].shape[0], 1)
+        # assam.projLM_IDAll.extend(tmp_id+pointCounter)
+      pointCounter += inputCoords[key].shape[0]
+    assam.projLM_IDAll = np.array(assam.projLM_IDAll)
 
     # initialise parameters to be optimised - including initial values + bounds
     optTrans_new = dict.fromkeys(["pose", "scale"])
@@ -1012,7 +1087,7 @@ if __name__ == "__main__":
       optTrans_new["pose"] = [0, 0, 0]
     else:
       optTrans_new["pose"] = [0, 0]
-    optTrans_new["scale"] = 1
+    optTrans_new["scale"] = 0.7
     # estimates on roughly how small/large the lungs can deviate from the mean
     MIN_SCALE = 0.4
     MAX_SCALE = 2
@@ -1043,6 +1118,7 @@ if __name__ == "__main__":
       )
 
     # initialise parameters that control optimisation process
+    assam.optimiseStage = "both"  # tell class to optimise shape and pose
     assam.optIterSuc, assam.optIter = 0, 0
     assam.scale = optTrans_new["scale"]
     assert len(assam.projLM_ID) != 0, "no projected landmarks"
@@ -1054,23 +1130,24 @@ if __name__ == "__main__":
 
     # perform optimisation
     optAll = assam.optimiseAirwayPoseAndShape(
-      assam.loss_function, initPose, bounds, epochs=args.epochs, threads=1
+      assam.objFuncAirway, initPose, bounds, epochs=args.epochs, threads=1
     )
     print(
-      f"Time taken is {time() - startTime} "
-      f"({round((time() - startTime) / 60.0)} mins)"
+      "\n\n\n\n\n\t\t\tTime taken is {0} ({1} mins)".format(
+        time() - startTime, round((time() - startTime) / 60.0), 3
+      )
     )
 
     # get final shape
-    output_shape_morphed = assam.morphAirway(
+    outShape = assam.morphAirway(
       inputCoords["ALL"],
+      inputCoords["ALL"].mean(axis=0),
       optAll["b"],
       assam.model_s["ALL"][: len(optAll["b"])],
     )
     outShape = assam.centerThenScale(
-      output_shape_morphed, optAll["scale"], output_shape_morphed.mean(axis=0)
+      outShape, optAll["scale"], outShape.mean(axis=0)
     )
-    outShape += optAll["pose"]
 
     out_file = "{}_{}.{}"
     makedirs("outputLandmarks", exist_ok=True)
